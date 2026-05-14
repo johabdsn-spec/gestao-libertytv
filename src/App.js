@@ -71,7 +71,7 @@ const STATUS = {
   atrasado: { bg: "#2a0a0a", text: "#ff5c5c", border: "#ff5c5c30", label: "Atrasado" },
 };
 
-const isDueToday = (c) => c.vencimento === todayDay() && getStatus(c) !== "pago";
+const isDueToday = (c) => { const d = c.vencimento - todayDay(); return d >= 0 && d <= 2 && getStatus(c) !== "pago"; };
 const isDueSoon  = (c) => { const d = c.vencimento - todayDay(); return d > 0 && d <= 3 && getStatus(c) !== "pago"; };
 
 const S = {
@@ -441,14 +441,14 @@ export default function App() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <img src="/logo.jpg" alt="Liberty TV" style={{ height: 38, borderRadius: 7, objectFit: "cover" }} />
             <div style={{ borderLeft: `1px solid ${C.border}`, paddingLeft: 10 }}>
-              <div style={{ fontWeight: 700, fontSize: 11, color: C.textLight, letterSpacing: 2, textTransform: "uppercase" }}>Gestão</div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: C.white, letterSpacing: 1 }}>LIBERTY TV</div>
               <div style={{ fontSize: 9, color: C.textMuted, fontStyle: "italic" }}>entretenimento, sem limites</div>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {notifStatus !== "granted"
-              ? <button onClick={requestPermission} style={{ background: `${C.warning}18`, border: `1px solid ${C.warning}40`, borderRadius: 6, padding: "5px 10px", fontSize: 11, color: C.warning, cursor: "pointer", fontFamily: "'Roboto',sans-serif" }}>🔔 Notificacoes</button>
-              : <span style={{ fontSize: 11, color: C.success, background: `${C.success}15`, padding: "4px 10px", borderRadius: 6 }}>🔔 Ativas</span>
+              ? <button onClick={requestPermission} style={{ background: `${C.warning}18`, border: `1px solid ${C.warning}40`, borderRadius: 6, padding: "5px 10px", fontSize: 11, color: C.warning, cursor: "pointer", fontFamily: "'Roboto',sans-serif" }}>🔔 Notificações</button>
+              : <span style={{ fontSize: 11, color: C.success, background: `${C.success}15`, padding: "4px 10px", borderRadius: 6 }}>🔔 Notificações ativas</span>
             }
             {/* Top nav — só desktop */}
             {!isMobile && (
@@ -475,13 +475,13 @@ export default function App() {
         {view === "dashboard" && (
           <div className="fin">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-              <h2 style={{ fontSize: 19, fontWeight: 700 }}>Visao Geral</h2>
+              <h2 style={{ fontSize: 19, fontWeight: 700 }}>VISÃO GERAL</h2>
               <span style={{ fontSize: 11, color: C.textMuted }}>{new Date().toLocaleDateString("pt-BR", { day: "numeric", month: "short", year: "numeric" })}</span>
             </div>
 
             {dueToday.length > 0 && (
               <div style={{ background: `${C.blue}18`, border: `1px solid ${C.blue}50`, borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, color: C.blueLight, fontSize: 13, marginBottom: 4 }}>Vencimentos HOJE</div>
+                <div style={{ fontWeight: 700, color: C.blueLight, fontSize: 13, marginBottom: 4 }}>Vencendo nos próximos dias</div>
                 <div style={{ fontSize: 13, color: C.textMuted }}>{dueToday.map(c => c.nome).join(" · ")}</div>
               </div>
             )}
@@ -503,7 +503,7 @@ export default function App() {
               ))}
             </div>
 
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.textDim, marginBottom: 10, textTransform: "uppercase", letterSpacing: 1.5 }}>Acao necessaria</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.textDim, marginBottom: 10, textTransform: "uppercase", letterSpacing: 1.5 }}>AÇÃO NECESSÁRIA</div>
             {(() => {
               const lista = [...new Map([...dueToday, ...dueSoon, ...ativos.filter(c => getStatus(c) === "atrasado")].map(c => [c.id, c])).values()];
               return lista.length === 0
@@ -513,7 +513,7 @@ export default function App() {
                     return (
                       <div key={c.id} style={{ ...S.card, padding: "14px 16px", marginBottom: 8 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                          <div style={{ width: 40, height: 40, borderRadius: "50%", background: `${C.blue}25`, border: `1px solid ${C.blue}50`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: C.blueLight, fontSize: 16, flexShrink: 0 }}>{initial(c.nome)}</div>
+                          <div style={{ width: 40, height: 40, borderRadius: "50%", background: `${C.blue}25`, border: `1px solid ${C.blue}50`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: C.white, fontSize: 16, flexShrink: 0 }}>{initial(c.nome)}</div>
                           <div style={{ flex: 1 }}>
                             <div style={{ fontWeight: 500, fontSize: 15 }}>{c.nome}</div>
                             <div style={{ fontSize: 12, color: C.textMuted }}>Dia {c.vencimento} · {fmt(c.valor)}</div>
@@ -523,8 +523,8 @@ export default function App() {
                           </div>
                         </div>
                         <div style={{ display: "flex", gap: 8 }}>
-                          <button onClick={() => openPay(c)} style={{ ...S.btnPri, flex: 1, padding: "10px", fontSize: 13 }}>Registrar pgto</button>
-                          <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, flex: 1, padding: "10px", fontSize: 13 }}>Enviar cobranca</button>
+                          <button onClick={() => openPay(c)} style={{ ...S.btnPri, flex: 1, padding: "10px", fontSize: 13 }}>Registrar pagamento</button>
+                          <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, flex: 1, padding: "10px", fontSize: 13 }}>Enviar cobrança</button>
                         </div>
                       </div>
                     );
@@ -558,7 +558,7 @@ export default function App() {
                 <div key={c.id} style={{ ...S.card, marginBottom: 10, opacity: c.ativo === false ? 0.45 : 1, borderLeft: `3px solid ${sc.text}60`, overflow: "hidden" }}>
                   <div style={{ padding: "14px 16px", cursor: "pointer" }} onClick={() => setSelectedId(exp ? null : c.id)}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <div style={{ width: 44, height: 44, borderRadius: "50%", background: `${C.blue}25`, border: `1px solid ${C.blue}50`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: C.blueLight, fontSize: 18, flexShrink: 0 }}>{initial(c.nome)}</div>
+                      <div style={{ width: 44, height: 44, borderRadius: "50%", background: `${C.blue}25`, border: `1px solid ${C.blue}50`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: C.white, fontSize: 18, flexShrink: 0 }}>{initial(c.nome)}</div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                           <div style={{ fontWeight: 500, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.nome}</div>
@@ -574,8 +574,8 @@ export default function App() {
 
                   {/* Ações */}
                   <div style={{ padding: "0 16px 14px", display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {st !== "pago" && <button onClick={() => openPay(c)} style={{ ...S.btnPri, padding: "9px 14px", fontSize: 13, flex: 1 }}>Registrar pgto</button>}
-                    <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, padding: "9px 14px", fontSize: 12, flex: 1 }}>Enviar cobranca</button>
+                    {st !== "pago" && <button onClick={() => openPay(c)} style={{ ...S.btnPri, padding: "9px 14px", fontSize: 13, flex: 1 }}>Registrar pagamento</button>}
+                    <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, padding: "9px 14px", fontSize: 12, flex: 1 }}>Enviar cobrança</button>
                     {st === "pago" && last && <button onClick={() => imprimirComprovante(c, last)} style={{ ...S.btnSm, padding: "9px 12px", background: "#2d1060", color: "#b89af0", border: "none" }}>Imprimir</button>}
                     {st === "pago" && last && c.telefone && <button onClick={() => enviarWhatsApp(c, last, "comprovante")} style={{ ...S.btnWa, padding: "9px 12px" }}>WhatsApp</button>}
                     {st === "pago" && <button onClick={() => desfazerPagamento(c.id)} style={{ ...S.btnSm, padding: "9px 10px" }}>↩</button>}
@@ -655,24 +655,24 @@ export default function App() {
           <div className="fin">
             <h2 style={{ fontSize: 19, fontWeight: 700, marginBottom: 20 }}>Alertas</h2>
             {[
-              { title: "Vencem HOJE",    color: C.blueLight, border: `${C.blue}50`,    list: dueToday },
-              { title: "Proximos 3 dias", color: C.warning,  border: `${C.warning}40`, list: dueSoon },
-              { title: "Atrasados",       color: C.danger,   border: `${C.danger}40`,  list: ativos.filter(c => getStatus(c) === "atrasado") },
+              { title: "Vencendo hoje",      color: C.blueLight, border: `${C.blue}50`,    list: dueToday },
+              { title: "Próximos 3 dias",    color: C.warning,   border: `${C.warning}40`, list: dueSoon },
+              { title: "Atrasados",          color: C.danger,    border: `${C.danger}40`,  list: ativos.filter(c => getStatus(c) === "atrasado") },
             ].map(group => group.list.length > 0 && (
               <div key={group.title} style={{ marginBottom: 22 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: group.color, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>{group.title} ({group.list.length})</div>
                 {group.list.map(c => (
                   <div key={c.id} style={{ ...S.card, borderColor: group.border, padding: "14px 16px", marginBottom: 8 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                      <div style={{ width: 40, height: 40, borderRadius: "50%", background: `${C.blue}25`, border: `1px solid ${C.blue}40`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: C.blueLight, fontSize: 16, flexShrink: 0 }}>{initial(c.nome)}</div>
+                      <div style={{ width: 40, height: 40, borderRadius: "50%", background: `${C.blue}25`, border: `1px solid ${C.blue}40`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: C.white, fontSize: 16, flexShrink: 0 }}>{initial(c.nome)}</div>
                       <div>
                         <div style={{ fontWeight: 500 }}>{c.nome}</div>
                         <div style={{ fontSize: 12, color: C.textMuted }}>@{c.usuario} · Dia {c.vencimento} · {fmt(c.valor)}</div>
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <button onClick={() => openPay(c)} style={{ ...S.btnPri, flex: 1, padding: "10px", fontSize: 13 }}>Registrar pgto</button>
-                      <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, flex: 1, padding: "10px", fontSize: 13 }}>Enviar cobranca</button>
+                      <button onClick={() => openPay(c)} style={{ ...S.btnPri, flex: 1, padding: "10px", fontSize: 13 }}>Registrar pagamento</button>
+                      <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, flex: 1, padding: "10px", fontSize: 13 }}>Enviar cobrança</button>
                     </div>
                   </div>
                 ))}
@@ -738,12 +738,12 @@ export default function App() {
           {navItems.map(t => (
             <button key={t.key} onClick={() => setView(t.key)} style={{
               flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              gap: 2, background: "none", border: "none", cursor: "pointer", padding: "6px 0",
-              color: view === t.key ? C.blueLight : C.textDim, fontFamily: "'Roboto',sans-serif", transition: "color .15s"
+              gap: 2, background: view === t.key ? `${C.blue}30` : "none", border: "none", cursor: "pointer", padding: "6px 4px", borderRadius: 10,
+              color: view === t.key ? "#ffffff" : "rgba(255,255,255,0.45)", fontFamily: "'Roboto',sans-serif", transition: "all .15s"
             }}>
-              <span style={{ fontSize: 20 }}>{t.icon}</span>
-              <span style={{ fontSize: 9, fontWeight: view === t.key ? 700 : 400 }}>{t.label}</span>
-              {view === t.key && <div style={{ width: 16, height: 2, background: C.blue, borderRadius: 1 }} />}
+              <span style={{ fontSize: 22 }}>{t.icon}</span>
+              <span style={{ fontSize: 10, fontWeight: view === t.key ? 700 : 400 }}>{t.label}</span>
+              {view === t.key && <div style={{ width: 20, height: 2, background: C.blueBright, borderRadius: 1 }} />}
             </button>
           ))}
         </nav>
