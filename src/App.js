@@ -45,9 +45,9 @@ const C = {
   blueDark:   "#0f30a0",
   blueGlow:   "#1a4fd840",
   white:      "#ffffff",
-  textLight:  "#c8e0ff",
-  textMuted:  "#6a90cc",
-  textDim:    "#2a4080",
+  textLight:  "#e8f0ff",   // mais claro — melhor contraste
+  textMuted:  "#8fb0e0",   // era #6a90cc — mais legível
+  textDim:    "#5a7ab0",   // era #2a4080 — muito escuro, agora legível
   success:    "#00d68f",
   warning:    "#ffb020",
   danger:     "#ff5c5c",
@@ -85,64 +85,6 @@ const S = {
   btnWa:   { background: "#003d1a", border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, color: "#25d366", cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
   overlay: { position: "fixed", inset: 0, background: "#00000099", backdropFilter: "blur(4px)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 200, padding: 0, pointerEvents: "all" },
 };
-
-// ── Comprovante térmico ───────────────────────────────────────
-function imprimirComprovante(client, pagamento) {
-  const win = window.open("", "_blank");
-  const dataHoje = new Date().toLocaleString("pt-BR");
-  win.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
-    <title>Comprovante</title>
-    <style>
-      *{margin:0;padding:0;box-sizing:border-box}
-      body{font-family:'Courier New',Courier,monospace;font-size:12px;width:80mm;margin:0 auto;padding:4mm;background:#fff;color:#000}
-      .center{text-align:center}
-      .bold{font-weight:bold}
-      .line{border-top:1px dashed #000;margin:6px 0}
-      .row{display:flex;justify-content:space-between;margin:3px 0}
-      .logo{font-size:16px;font-weight:bold;letter-spacing:2px}
-      .slogan{font-size:10px;margin-bottom:2px}
-      .title{font-size:13px;font-weight:bold;margin:6px 0}
-      .valor{font-size:20px;font-weight:bold;margin:8px 0}
-      .small{font-size:10px;color:#444}
-      .obs{font-size:11px;border:1px dashed #000;padding:4px;margin:4px 0}
-      .btns{display:flex;gap:8px;justify-content:center;margin-top:14px}
-      .btns button{padding:8px 20px;border:none;border-radius:6px;font-size:13px;cursor:pointer}
-      .btn-p{background:#1a4fd8;color:#fff}
-      .btn-f{background:#eee;color:#333}
-      @media print{.btns{display:none}body{width:100%}}
-    </style></head><body>
-    <div class="center">
-      <div class="logo">LIBERTY TV</div>
-      <div class="slogan">entretenimento, sem limites</div>
-      <div class="line"></div>
-      <div class="title">COMPROVANTE DE PAGAMENTO</div>
-      <div class="line"></div>
-    </div>
-    <div class="row"><span>Cliente:</span><span class="bold">${client.nome}</span></div>
-    <div class="row"><span>Usuario:</span><span>${client.usuario}</span></div>
-    ${client.planoNome ? `<div class="row"><span>Plano:</span><span>${client.planoNome}</span></div>` : ""}
-    ${client.servidorNome ? `<div class="row"><span>Servidor:</span><span>${client.servidorNome}</span></div>` : ""}
-    <div class="row"><span>Referencia:</span><span>${mesAno()}</span></div>
-    <div class="row"><span>Data pgto:</span><span>${ptDate(pagamento.data)}</span></div>
-    <div class="row"><span>Prox. venc.:</span><span>Dia ${client.vencimento}</span></div>
-    <div class="line"></div>
-    <div class="center">
-      <div class="small">VALOR PAGO</div>
-      <div class="valor">${fmt(pagamento.valor)}</div>
-    </div>
-    <div class="line"></div>
-    ${pagamento.obs ? `<div class="obs">Obs: ${pagamento.obs}</div>` : ""}
-    <div class="center small" style="margin-top:6px">
-      ${dataHoje}<br/>
-      Documento interno - sem validade fiscal
-    </div>
-    <div class="btns">
-      <button class="btn-p" onclick="window.print()">Imprimir</button>
-      <button class="btn-f" onclick="window.close()">Fechar</button>
-    </div>
-  </body></html>`);
-  win.document.close();
-}
 
 // ── WhatsApp ──────────────────────────────────────────────────
 function enviarWhatsApp(client, pagamento, tipo = "comprovante") {
@@ -479,21 +421,14 @@ export default function App() {
               <span style={{ fontSize: 11, color: C.textMuted }}>{new Date().toLocaleDateString("pt-BR", { day: "numeric", month: "short", year: "numeric" })}</span>
             </div>
 
-            {dueToday.length > 0 && (
-              <div style={{ background: `${C.blue}18`, border: `1px solid ${C.blue}50`, borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, color: C.blueLight, fontSize: 13, marginBottom: 4 }}>Vencendo nos próximos dias</div>
-                <div style={{ fontSize: 13, color: C.textMuted }}>{dueToday.map(c => c.nome).join(" · ")}</div>
-              </div>
-            )}
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 24 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 20 }}>
               {[
-                { label: "Clientes ativos", value: ativos.length,     icon: "👥", color: C.textMuted },
+                { label: "Clientes ativos", value: ativos.length,     icon: "👥", color: C.blueLight },
                 { label: "Receita mensal",  value: fmt(receitaTotal), icon: "💰", color: C.success },
                 { label: "Recebido",        value: fmt(receitaPaga),  icon: "✅", color: C.success },
-                { label: "Pagos",           value: totalPago,         icon: "✔", color: C.success },
+                { label: "Pagos",           value: totalPago,         icon: "✔",  color: C.success },
                 { label: "Pendentes",       value: totalPendente,     icon: "⏳", color: C.warning },
-                { label: "Atrasados",       value: totalAtrasado,     icon: "⚠", color: C.danger },
+                { label: "Atrasados",       value: totalAtrasado,     icon: "⚠",  color: C.danger },
               ].map(card => (
                 <div key={card.label} style={{ ...S.card, padding: "14px 16px", borderTop: `3px solid ${card.color}` }}>
                   <div style={{ fontSize: 18, marginBottom: 8 }}>{card.icon}</div>
@@ -503,32 +438,69 @@ export default function App() {
               ))}
             </div>
 
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.textDim, marginBottom: 10, textTransform: "uppercase", letterSpacing: 1.5 }}>AÇÃO NECESSÁRIA</div>
+            {/* Bloco único de alertas */}
             {(() => {
-              const lista = [...new Map([...dueToday, ...dueSoon, ...ativos.filter(c => getStatus(c) === "atrasado")].map(c => [c.id, c])).values()];
-              return lista.length === 0
-                ? <div style={{ color: C.textDim, fontSize: 14, padding: "20px 0", textAlign: "center" }}>Nenhuma acao pendente!</div>
-                : lista.map(c => {
-                    const st = getStatus(c);
-                    return (
-                      <div key={c.id} style={{ ...S.card, padding: "14px 16px", marginBottom: 8 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                          <div style={{ width: 40, height: 40, borderRadius: "50%", background: `${C.blue}25`, border: `1px solid ${C.blue}50`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: C.white, fontSize: 16, flexShrink: 0 }}>{initial(c.nome)}</div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 500, fontSize: 15 }}>{c.nome}</div>
-                            <div style={{ fontSize: 12, color: C.textMuted }}>Dia {c.vencimento} · {fmt(c.valor)}</div>
-                            <div style={{ fontSize: 11, color: st === "atrasado" ? C.danger : isDueToday(c) ? C.blueLight : C.warning, marginTop: 2 }}>
-                              {st === "atrasado" ? "Atrasado" : isDueToday(c) ? "Vence hoje" : `Vence em ${c.vencimento - todayDay()} dia(s)`}
+              const vencendoHoje    = ativos.filter(c => c.vencimento === todayDay() && getStatus(c) !== "pago");
+              const vencendoAmanha  = ativos.filter(c => c.vencimento === todayDay() + 1 && getStatus(c) !== "pago");
+              const atrasados       = ativos.filter(c => getStatus(c) === "atrasado");
+              const totalAlertas    = vencendoHoje.length + vencendoAmanha.length + atrasados.length;
+
+              if (totalAlertas === 0) return (
+                <div style={{ ...S.card, padding: "20px 16px", textAlign: "center" }}>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>🎉</div>
+                  <div style={{ fontWeight: 600, fontSize: 15, color: C.white }}>Tudo em dia!</div>
+                  <div style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>Nenhum vencimento para hoje ou amanhã</div>
+                </div>
+              );
+
+              return (
+                <div style={{ ...S.card, borderColor: totalAtrasado > 0 ? `${C.danger}60` : `${C.warning}60`, overflow: "hidden" }}>
+                  <div style={{ background: totalAtrasado > 0 ? `${C.danger}15` : `${C.warning}15`, padding: "14px 16px", borderBottom: `1px solid ${C.border2}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: totalAtrasado > 0 ? C.danger : C.warning }}>
+                          {totalAtrasado > 0 ? "⚠ Atenção necessária" : "🔔 Vencimentos próximos"}
+                        </div>
+                        <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>
+                          {[
+                            vencendoHoje.length   > 0 && `${vencendoHoje.length} vence(m) hoje`,
+                            vencendoAmanha.length > 0 && `${vencendoAmanha.length} vence(m) amanhã`,
+                            atrasados.length      > 0 && `${atrasados.length} em atraso`,
+                          ].filter(Boolean).join(" · ")}
+                        </div>
+                      </div>
+                      <button onClick={() => setView("alertas")} style={{ ...S.btnPri, padding: "8px 14px", fontSize: 12, flexShrink: 0 }}>
+                        Ver alertas
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ padding: "10px 16px 14px" }}>
+                    {[
+                      ...vencendoHoje.map(c   => ({ ...c, _tag: "hoje" })),
+                      ...vencendoAmanha.map(c => ({ ...c, _tag: "amanha" })),
+                      ...atrasados.map(c      => ({ ...c, _tag: "atrasado" })),
+                    ].slice(0, 4).map(c => (
+                      <div key={c.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border2}` }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <div style={{ width: 34, height: 34, borderRadius: "50%", background: `${C.blue}25`, border: `1px solid ${C.blue}40`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: C.white, fontSize: 14, flexShrink: 0 }}>{initial(c.nome)}</div>
+                          <div>
+                            <div style={{ fontWeight: 500, fontSize: 14 }}>{c.nome}</div>
+                            <div style={{ fontSize: 11, color: c._tag === "atrasado" ? C.danger : c._tag === "hoje" ? C.warning : C.textMuted }}>
+                              {c._tag === "atrasado" ? "Em atraso" : c._tag === "hoje" ? "Vence hoje" : "Vence amanhã"} · {fmt(c.valor)}
                             </div>
                           </div>
                         </div>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button onClick={() => openPay(c)} style={{ ...S.btnPri, flex: 1, padding: "10px", fontSize: 13 }}>Registrar pagamento</button>
-                          <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, flex: 1, padding: "10px", fontSize: 13 }}>Enviar cobrança</button>
-                        </div>
                       </div>
-                    );
-                  });
+                    ))}
+                    {totalAlertas > 4 && (
+                      <div style={{ fontSize: 12, color: C.textMuted, textAlign: "center", paddingTop: 10 }}>
+                        +{totalAlertas - 4} mais na aba Alertas
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
             })()}
           </div>
         )}
@@ -576,8 +548,7 @@ export default function App() {
                   <div style={{ padding: "0 16px 14px", display: "flex", gap: 8, flexWrap: "wrap" }}>
                     {st !== "pago" && <button onClick={() => openPay(c)} style={{ ...S.btnPri, padding: "9px 14px", fontSize: 13, flex: 1 }}>Registrar pagamento</button>}
                     <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, padding: "9px 14px", fontSize: 12, flex: 1 }}>Enviar cobrança</button>
-                    {st === "pago" && last && <button onClick={() => imprimirComprovante(c, last)} style={{ ...S.btnSm, padding: "9px 12px", background: "#2d1060", color: "#b89af0", border: "none" }}>Imprimir</button>}
-                    {st === "pago" && last && c.telefone && <button onClick={() => enviarWhatsApp(c, last, "comprovante")} style={{ ...S.btnWa, padding: "9px 12px" }}>WhatsApp</button>}
+                    {st === "pago" && last && c.telefone && <button onClick={() => enviarWhatsApp(c, last, "comprovante")} style={{ ...S.btnWa, padding: "9px 12px" }}>Comprovante WA</button>}
                     {st === "pago" && <button onClick={() => desfazerPagamento(c.id)} style={{ ...S.btnSm, padding: "9px 10px" }}>↩</button>}
                     <button onClick={() => openForm(c)} style={{ ...S.btnSm, padding: "9px 10px" }}>✏</button>
                     <button onClick={() => toggleAtivo(c.id, c.ativo !== false)} style={{ ...S.btnSm, padding: "9px 10px" }}>{c.ativo !== false ? "🔒" : "🔓"}</button>
@@ -632,12 +603,11 @@ export default function App() {
                         ? <div style={{ color: C.textDim, fontSize: 13 }}>Nenhum pagamento registrado</div>
                         : [...(c.pagamentos || [])].reverse().map((p, i) => (
                           <div key={i} style={{ background: C.bgCard2, borderRadius: 8, padding: "10px 12px", marginBottom: 6, border: `1px solid ${C.border2}` }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: p.obs ? 6 : 0 }}>
                               <span style={{ fontWeight: 700, color: C.success, fontSize: 15 }}>{fmt(p.valor)}</span>
-                              <span style={{ fontSize: 12, color: C.textDim }}>{ptDate(p.data)}</span>
+                              <span style={{ fontSize: 12, color: C.textMuted }}>{ptDate(p.data)}</span>
                             </div>
-                            {p.obs && <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 6 }}>{p.obs}</div>}
-                            <button onClick={() => imprimirComprovante(c, p)} style={{ ...S.btnSm, width: "100%", textAlign: "center" }}>Imprimir comprovante</button>
+                            {p.obs && <div style={{ fontSize: 12, color: C.textMuted }}>{p.obs}</div>}
                           </div>
                         ))
                       }
@@ -945,10 +915,6 @@ export default function App() {
             <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 8 }}>{lastPay.client.nome}</div>
             <div style={{ fontSize: 30, fontWeight: 900, color: C.success, marginBottom: 24 }}>{fmt(lastPay.pagamento.valor)}</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <button onClick={() => { imprimirComprovante(lastPay.client, lastPay.pagamento); setLastPay(null); }}
-                style={{ ...S.btnPri, width: "100%", padding: 14, background: "linear-gradient(135deg,#5b21b6,#3b0d8f)" }}>
-                Imprimir comprovante
-              </button>
               {lastPay.client.telefone && (
                 <button onClick={() => { enviarWhatsApp(lastPay.client, lastPay.pagamento, "comprovante"); setLastPay(null); }}
                   style={{ ...S.btnPri, width: "100%", padding: 14, background: "linear-gradient(135deg,#128c3e,#075e29)" }}>
