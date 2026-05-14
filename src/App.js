@@ -488,7 +488,7 @@ export default function App() {
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 24 }}>
               {[
-                { label: "Clientes ativos", value: ativos.length,     icon: "👥", color: C.blueLight },
+                { label: "Clientes ativos", value: ativos.length,     icon: "👥", color: C.white },
                 { label: "Receita mensal",  value: fmt(receitaTotal), icon: "💰", color: C.success },
                 { label: "Recebido",        value: fmt(receitaPaga),  icon: "✅", color: C.success },
                 { label: "Pagos",           value: totalPago,         icon: "✔", color: C.success },
