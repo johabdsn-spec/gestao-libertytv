@@ -6,14 +6,54 @@ import {
 import { db } from "./firebase";
 
 // ── helpers ───────────────────────────────────────────────────
-const todayDay = () => new Date().getDate();
-const todayISO = () => new Date().toISOString().split("T")[0];
-const fmt      = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const initial  = (n) => (n || "?").charAt(0).toUpperCase();
-const ptDate   = (iso) => new Date(iso + "T12:00").toLocaleDateString("pt-BR");
-const mesAno   = () => new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+const todayISO  = () => new Date().toISOString().split("T")[0];
+const fmt       = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const initial   = (n) => (n || "?").charAt(0).toUpperCase();
+const ptDate    = (iso) => iso ? new Date(iso + "T12:00").toLocaleDateString("pt-BR") : "—";
+const mesAno    = () => new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 
-// ── máscaras ──────────────────────────────────────────────────
+// Adiciona dias a uma data ISO
+const addDias = (iso, dias) => {
+  const d = new Date(iso + "T12:00");
+  d.setDate(d.getDate() + dias);
+  return d.toISOString().split("T")[0];
+};
+
+// Dias entre hoje e uma data ISO (positivo = futuro, negativo = passado)
+const diffDias = (iso) => {
+  if (!iso) return -999;
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const alvo = new Date(iso + "T12:00"); alvo.setHours(0,0,0,0);
+  return Math.round((alvo - hoje) / 86400000);
+};
+
+// Periodicidade → dias
+const perioDias = (p) => p === "semestral" ? 180 : p === "trimestral" ? 90 : 30;
+
+// Valor mensal equivalente conforme periodicidade
+const valorMensal = (valor, perio) => {
+  if (perio === "trimestral") return valor / 3;
+  if (perio === "semestral")  return valor / 6;
+  return valor;
+};
+
+function getStatus(client) {
+  const venc = client.vencimento; // agora é ISO "YYYY-MM-DD"
+  if (!venc) return "pendente";
+  const diff = diffDias(venc);
+  // Verifica se pagou este "ciclo" (último pagamento depois do penúltimo vencimento)
+  const pags = client.pagamentos || [];
+  if (pags.length > 0) {
+    const last  = pags[pags.length - 1];
+    const lastD = new Date(last.data + "T12:00");
+    const vencD = new Date(venc + "T12:00");
+    const dias  = perioDias(client.periodicidade || "mensal");
+    const prevVenc = new Date(vencD); prevVenc.setDate(prevVenc.getDate() - dias);
+    if (lastD >= prevVenc) return "pago";
+  }
+  if (diff < 0) return "atrasado";
+  return "pendente";
+}
 const maskTel = (v) => {
   const d = v.replace(/\D/g, "").slice(0, 11);
   if (d.length <= 10) return d.replace(/(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3").replace(/-$/, "");
@@ -71,8 +111,8 @@ const STATUS = {
   atrasado: { bg: "#2a0a0a", text: "#ff5c5c", border: "#ff5c5c30", label: "Atrasado" },
 };
 
-const isDueToday = (c) => { const d = c.vencimento - todayDay(); return d >= 0 && d <= 2 && getStatus(c) !== "pago"; };
-const isDueSoon  = (c) => { const d = c.vencimento - todayDay(); return d > 0 && d <= 3 && getStatus(c) !== "pago"; };
+const isDueToday = (c) => { const d = diffDias(c.vencimento); return d >= 0 && d <= 2 && getStatus(c) !== "pago"; };
+const isDueSoon  = (c) => { const d = diffDias(c.vencimento); return d > 0 && d <= 3 && getStatus(c) !== "pago"; };
 
 const S = {
   page:    { fontFamily: "'Roboto', sans-serif", background: C.bg, minHeight: "100vh", color: C.white },
@@ -140,7 +180,8 @@ function useNotifications(clients) {
 // ── FORM padrão cliente ───────────────────────────────────────
 const emptyForm = () => ({
   nome: "", usuario: "", senha: "", servidorId: "", servidorNome: "",
-  planoId: "", planoNome: "", valor: "", telefone: "", vencimento: "",
+  planoId: "", planoNome: "", periodicidade: "mensal", valor: "",
+  telefone: "", vencimento: "",
   isMac: false, mac: "", code: "", appNome: "", obs: ""
 });
 
@@ -187,7 +228,7 @@ export default function App() {
   const [showServForm,  setShowServForm]  = useState(false);
   const [editingServ,   setEditingServ]   = useState(null);
   const [servForm,      setServForm]      = useState({ nome: "", creditoValor: "", planos: [] });
-  const [newPlano,      setNewPlano]      = useState({ nome: "", valor: "" });
+  const [newPlano,      setNewPlano]      = useState({ nome: "", valor: "", periodicidade: "mensal" });
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.innerWidth < 640 : true);
   useEffect(() => {
@@ -214,8 +255,8 @@ export default function App() {
   const totalPago     = ativos.filter(c => getStatus(c) === "pago").length;
   const totalPendente = ativos.filter(c => getStatus(c) === "pendente").length;
   const totalAtrasado = ativos.filter(c => getStatus(c) === "atrasado").length;
-  const receitaTotal  = ativos.reduce((s, c) => s + Number(c.valor || 0), 0);
-  const receitaPaga   = ativos.filter(c => getStatus(c) === "pago").reduce((s, c) => s + Number(c.valor || 0), 0);
+  const receitaTotal  = ativos.reduce((s, c) => s + valorMensal(Number(c.valor || 0), c.periodicidade), 0);
+  const receitaPaga   = ativos.filter(c => getStatus(c) === "pago").reduce((s, c) => s + valorMensal(Number(c.valor || 0), c.periodicidade), 0);
   const alertCount    = dueToday.length + dueSoon.length + totalAtrasado;
 
   const filtered = clients.filter(c => {
@@ -232,6 +273,7 @@ export default function App() {
         nome: client.nome || "", usuario: client.usuario || "", senha: client.senha || "",
         servidorId: client.servidorId || "", servidorNome: client.servidorNome || "",
         planoId: client.planoId || "", planoNome: client.planoNome || "",
+        periodicidade: client.periodicidade || "mensal",
         valor: client.valor ? maskValor(String(Math.round(client.valor * 100))) : "",
         telefone: client.telefone || "", vencimento: client.vencimento || "",
         isMac: client.isMac || false, mac: client.mac || "", code: client.code || "",
@@ -249,7 +291,6 @@ export default function App() {
     const data = {
       ...form,
       valor: unMaskValor(form.valor),
-      vencimento: parseInt(form.vencimento),
       telefone: form.telefone.replace(/\D/g, ""),
     };
     if (editingClient) await updateDoc(doc(db, "clientes", editingClient.id), data);
@@ -263,9 +304,15 @@ export default function App() {
     setSaving(true);
     const c    = clients.find(x => x.id === payModal.id);
     const novo = { valor: unMaskValor(payForm.valor), data: payForm.data, obs: payForm.obs };
-    await updateDoc(doc(db, "clientes", payModal.id), { pagamentos: [...(c.pagamentos || []), novo] });
+    const dias = perioDias(c.periodicidade || "mensal");
+    // Novo vencimento: a partir da data do pagamento + periodicidade
+    const novoVenc = addDias(payForm.data, dias);
+    await updateDoc(doc(db, "clientes", payModal.id), {
+      pagamentos: [...(c.pagamentos || []), novo],
+      vencimento: novoVenc,
+    });
     setSaving(false);
-    setLastPay({ client: c, pagamento: novo });
+    setLastPay({ client: { ...c, vencimento: novoVenc }, pagamento: novo });
     setPayModal(null);
     setPayForm({ valor: "", data: todayISO(), obs: "" });
   };
@@ -289,14 +336,14 @@ export default function App() {
       ? { nome: serv.nome, creditoValor: serv.creditoValor ? maskValor(String(Math.round(serv.creditoValor * 100))) : "", planos: serv.planos || [] }
       : { nome: "", creditoValor: "", planos: [] }
     );
-    setNewPlano({ nome: "", valor: "" });
+    setNewPlano({ nome: "", valor: "", periodicidade: "mensal" });
     setShowServForm(true);
   };
 
   const addPlano = () => {
     if (!newPlano.nome) return;
-    setServForm(f => ({ ...f, planos: [...f.planos, { id: Date.now().toString(), nome: newPlano.nome, valor: unMaskValor(newPlano.valor) }] }));
-    setNewPlano({ nome: "", valor: "" });
+    setServForm(f => ({ ...f, planos: [...f.planos, { id: Date.now().toString(), nome: newPlano.nome, valor: unMaskValor(newPlano.valor), periodicidade: newPlano.periodicidade || "mensal" }] }));
+    setNewPlano({ nome: "", valor: "", periodicidade: "mensal" });
   };
 
   const removePlano = (id) => setServForm(f => ({ ...f, planos: f.planos.filter(p => p.id !== id) }));
@@ -324,6 +371,7 @@ export default function App() {
     const plano = serv?.planos?.find(p => p.id === planoId);
     setForm(f => ({
       ...f, planoId, planoNome: plano?.nome || "",
+      periodicidade: plano?.periodicidade || "mensal",
       valor: plano?.valor ? maskValor(String(Math.round(plano.valor * 100))) : f.valor
     }));
   };
@@ -440,10 +488,12 @@ export default function App() {
 
             {/* Bloco único de alertas */}
             {(() => {
-              const vencendoHoje    = ativos.filter(c => c.vencimento === todayDay() && getStatus(c) !== "pago");
-              const vencendoAmanha  = ativos.filter(c => c.vencimento === todayDay() + 1 && getStatus(c) !== "pago");
-              const atrasados       = ativos.filter(c => getStatus(c) === "atrasado");
-              const totalAlertas    = vencendoHoje.length + vencendoAmanha.length + atrasados.length;
+              const hoje    = new Date(); hoje.setHours(0,0,0,0);
+              const amanha  = new Date(); amanha.setDate(amanha.getDate()+1); amanha.setHours(0,0,0,0);
+              const vencendoHoje   = ativos.filter(c => { const d = diffDias(c.vencimento); return d === 0 && getStatus(c) !== "pago"; });
+              const vencendoAmanha = ativos.filter(c => { const d = diffDias(c.vencimento); return d === 1 && getStatus(c) !== "pago"; });
+              const atrasados      = ativos.filter(c => getStatus(c) === "atrasado");
+              const totalAlertas   = vencendoHoje.length + vencendoAmanha.length + atrasados.length;
 
               if (totalAlertas === 0) return (
                 <div style={{ ...S.card, padding: "20px 16px", textAlign: "center" }}>
@@ -454,12 +504,12 @@ export default function App() {
               );
 
               return (
-                <div style={{ ...S.card, borderColor: totalAtrasado > 0 ? `${C.danger}60` : `${C.warning}60`, overflow: "hidden" }}>
-                  <div style={{ background: totalAtrasado > 0 ? `${C.danger}15` : `${C.warning}15`, padding: "14px 16px", borderBottom: `1px solid ${C.border2}` }}>
+                <div style={{ ...S.card, borderColor: atrasados.length > 0 ? `${C.danger}60` : `${C.warning}60`, overflow: "hidden" }}>
+                  <div style={{ background: atrasados.length > 0 ? `${C.danger}15` : `${C.warning}15`, padding: "14px 16px", borderBottom: `1px solid ${C.border2}` }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div>
-                        <div style={{ fontWeight: 700, fontSize: 14, color: totalAtrasado > 0 ? C.danger : C.warning }}>
-                          {totalAtrasado > 0 ? "⚠ Atenção necessária" : "🔔 Vencimentos próximos"}
+                        <div style={{ fontWeight: 700, fontSize: 14, color: atrasados.length > 0 ? C.danger : C.warning }}>
+                          {atrasados.length > 0 ? "⚠ Atenção necessária" : "🔔 Vencimentos próximos"}
                         </div>
                         <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>
                           {[
@@ -474,7 +524,6 @@ export default function App() {
                       </button>
                     </div>
                   </div>
-
                   <div style={{ padding: "10px 16px 14px" }}>
                     {[
                       ...vencendoHoje.map(c   => ({ ...c, _tag: "hoje" })),
@@ -487,7 +536,7 @@ export default function App() {
                           <div>
                             <div style={{ fontWeight: 500, fontSize: 14 }}>{c.nome}</div>
                             <div style={{ fontSize: 11, color: c._tag === "atrasado" ? C.danger : c._tag === "hoje" ? C.warning : C.textMuted }}>
-                              {c._tag === "atrasado" ? "Em atraso" : c._tag === "hoje" ? "Vence hoje" : "Vence amanhã"} · {fmt(c.valor)}
+                              {c._tag === "atrasado" ? `Em atraso desde ${ptDate(c.vencimento)}` : c._tag === "hoje" ? "Vence hoje" : "Vence amanhã"} · {fmt(c.valor)}
                             </div>
                           </div>
                         </div>
@@ -536,7 +585,7 @@ export default function App() {
                           <div style={{ fontWeight: 500, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.nome}</div>
                           <span style={{ background: sc.bg, color: sc.text, border: `1px solid ${sc.border}`, padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 500, flexShrink: 0 }}>{sc.label}</span>
                         </div>
-                        <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>@{c.usuario} · Dia {c.vencimento} · {fmt(c.valor)}</div>
+                        <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>@{c.usuario} · Vence {ptDate(c.vencimento)} · {fmt(c.valor)}</div>
                         {c.servidorNome && <div style={{ fontSize: 11, color: C.textDim, marginTop: 1 }}>{c.servidorNome}{c.planoNome ? ` · ${c.planoNome}` : ""}</div>}
                         {last && <div style={{ fontSize: 11, color: C.success, marginTop: 2 }}>Ult. pgto: {fmt(last.valor)} em {ptDate(last.data)}</div>}
                       </div>
@@ -560,12 +609,14 @@ export default function App() {
                     <div style={{ borderTop: `1px solid ${C.border2}`, padding: "14px 16px" }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
                         {[
-                          { label: "USUARIO",  val: c.usuario },
-                          { label: "TELEFONE", val: c.telefone ? maskTel(c.telefone) : "—" },
-                          { label: "SERVIDOR", val: c.servidorNome || "—" },
-                          { label: "PLANO",    val: c.planoNome || "—" },
-                          { label: "APP",      val: c.appNome || "—" },
-                          { label: "SENHA",    val: null },
+                          { label: "USUARIO",       val: c.usuario },
+                          { label: "TELEFONE",      val: c.telefone ? maskTel(c.telefone) : "—" },
+                          { label: "SERVIDOR",      val: c.servidorNome || "—" },
+                          { label: "PLANO",         val: c.planoNome || "—" },
+                          { label: "PERIODICIDADE", val: c.periodicidade === "trimestral" ? "Trimestral" : c.periodicidade === "semestral" ? "Semestral" : "Mensal" },
+                          { label: "VENCIMENTO",    val: ptDate(c.vencimento) },
+                          { label: "APP",           val: c.appNome || "—" },
+                          { label: "SENHA",         val: null },
                         ].map(f => (
                           <div key={f.label} style={{ background: C.bgCard2, borderRadius: 8, padding: "10px 12px", border: `1px solid ${C.border2}`, gridColumn: f.label === "SENHA" ? "1 / -1" : "auto" }}>
                             <div style={{ fontSize: 10, color: C.textDim, marginBottom: 4, letterSpacing: 1 }}>{f.label}</div>
@@ -625,9 +676,10 @@ export default function App() {
           <div className="fin">
             <h2 style={{ fontSize: 19, fontWeight: 700, marginBottom: 20 }}>Alertas</h2>
             {[
-              { title: "Vencendo hoje",      color: C.blueLight, border: `${C.blue}50`,    list: dueToday },
-              { title: "Próximos 3 dias",    color: C.warning,   border: `${C.warning}40`, list: dueSoon },
-              { title: "Atrasados",          color: C.danger,    border: `${C.danger}40`,  list: ativos.filter(c => getStatus(c) === "atrasado") },
+              { title: "Vencendo hoje",    color: C.blueLight, border: `${C.blue}50`,    list: ativos.filter(c => diffDias(c.vencimento) === 0 && getStatus(c) !== "pago") },
+              { title: "Vence amanhã",     color: C.warning,   border: `${C.warning}40`, list: ativos.filter(c => diffDias(c.vencimento) === 1 && getStatus(c) !== "pago") },
+              { title: "Próximos 5 dias",  color: C.textMuted, border: `${C.border}`,    list: ativos.filter(c => { const d = diffDias(c.vencimento); return d >= 2 && d <= 5 && getStatus(c) !== "pago"; }) },
+              { title: "Atrasados",        color: C.danger,    border: `${C.danger}40`,  list: ativos.filter(c => getStatus(c) === "atrasado") },
             ].map(group => group.list.length > 0 && (
               <div key={group.title} style={{ marginBottom: 22 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: group.color, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>{group.title} ({group.list.length})</div>
@@ -637,7 +689,8 @@ export default function App() {
                       <div style={{ width: 40, height: 40, borderRadius: "50%", background: `${C.blue}25`, border: `1px solid ${C.blue}40`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: C.white, fontSize: 16, flexShrink: 0 }}>{initial(c.nome)}</div>
                       <div>
                         <div style={{ fontWeight: 500 }}>{c.nome}</div>
-                        <div style={{ fontSize: 12, color: C.textMuted }}>@{c.usuario} · Dia {c.vencimento} · {fmt(c.valor)}</div>
+                        <div style={{ fontSize: 12, color: C.textMuted }}>@{c.usuario} · Vence {ptDate(c.vencimento)} · {fmt(c.valor)}</div>
+                        <div style={{ fontSize: 11, color: C.textDim, marginTop: 1 }}>{c.planoNome || ""}{c.periodicidade && c.periodicidade !== "mensal" ? ` · ${c.periodicidade === "trimestral" ? "Trimestral" : "Semestral"}` : ""}</div>
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
@@ -687,6 +740,9 @@ export default function App() {
                         <div key={p.id} style={{ background: C.bgCard2, border: `1px solid ${C.border2}`, borderRadius: 8, padding: "6px 12px", fontSize: 12 }}>
                           <span style={{ color: C.white }}>{p.nome}</span>
                           <span style={{ color: C.success, marginLeft: 8, fontWeight: 700 }}>{fmt(p.valor)}</span>
+                          <span style={{ color: C.textMuted, marginLeft: 6, fontSize: 10, background: C.bgCard, padding: "1px 6px", borderRadius: 8 }}>
+                            {p.periodicidade === "trimestral" ? "Trim." : p.periodicidade === "semestral" ? "Sem." : "Mens."}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -762,9 +818,21 @@ export default function App() {
               <select value={form.planoId} onChange={e => handlePlanoChange(e.target.value)} style={{ ...S.input, cursor: "pointer" }}>
                 <option value="">-- Selecione --</option>
                 {(servidores.find(s => s.id === form.servidorId)?.planos || []).map(p => (
-                  <option key={p.id} value={p.id}>{p.nome} — {fmt(p.valor)}</option>
+                  <option key={p.id} value={p.id}>
+                    {p.nome} — {fmt(p.valor)} ({p.periodicidade === "trimestral" ? "Trimestral" : p.periodicidade === "semestral" ? "Semestral" : "Mensal"})
+                  </option>
                 ))}
               </select>
+            </div>
+          )}
+
+          {/* Periodicidade (readonly, vem do plano) */}
+          {form.planoId && (
+            <div style={{ marginBottom: 12, background: C.bgCard2, borderRadius: 8, padding: "10px 14px", border: `1px solid ${C.border2}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Periodicidade</span>
+              <span style={{ fontSize: 13, color: C.blueLight, fontWeight: 600 }}>
+                {form.periodicidade === "trimestral" ? "Trimestral (+90 dias)" : form.periodicidade === "semestral" ? "Semestral (+180 dias)" : "Mensal (+30 dias)"}
+              </span>
             </div>
           )}
 
@@ -786,10 +854,10 @@ export default function App() {
 
           {/* Vencimento */}
           <div style={{ marginBottom: 12 }}>
-            <Label>Dia do vencimento *</Label>
-            <input inputMode="numeric" value={form.vencimento}
-              onChange={e => setForm(p => ({ ...p, vencimento: e.target.value.replace(/\D/g, "").slice(0, 2) }))}
-              placeholder="Ex: 10" style={S.input} />
+            <Label>Data de vencimento *</Label>
+            <input type="date" value={form.vencimento}
+              onChange={e => setForm(p => ({ ...p, vencimento: e.target.value }))}
+              style={S.input} />
           </div>
 
           {/* App */}
@@ -858,16 +926,35 @@ export default function App() {
             <Label>Planos</Label>
             {servForm.planos.map(p => (
               <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bgCard2, borderRadius: 8, padding: "10px 12px", marginBottom: 6, border: `1px solid ${C.border2}` }}>
-                <span style={{ fontSize: 14 }}>{p.nome} <span style={{ color: C.success }}>— {fmt(p.valor)}</span></span>
-                <button onClick={() => removePlano(p.id)} style={{ background: "none", border: "none", color: C.danger, cursor: "pointer", fontSize: 16 }}>×</button>
+                <div>
+                  <span style={{ fontSize: 14, color: C.white }}>{p.nome}</span>
+                  <span style={{ color: C.success, marginLeft: 8, fontWeight: 700 }}>{fmt(p.valor)}</span>
+                  <span style={{ color: C.textMuted, marginLeft: 8, fontSize: 12, background: C.bgCard, padding: "2px 8px", borderRadius: 10, border: `1px solid ${C.border2}` }}>
+                    {p.periodicidade === "trimestral" ? "Trimestral" : p.periodicidade === "semestral" ? "Semestral" : "Mensal"}
+                  </span>
+                </div>
+                <button onClick={() => removePlano(p.id)} style={{ background: "none", border: "none", color: C.danger, cursor: "pointer", fontSize: 18, flexShrink: 0 }}>×</button>
               </div>
             ))}
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <input value={newPlano.nome} onChange={e => setNewPlano(p => ({ ...p, nome: e.target.value }))} placeholder="Nome do plano" style={{ ...S.input, flex: 2 }} />
-              <input inputMode="numeric" value={newPlano.valor}
-                onChange={e => setNewPlano(p => ({ ...p, valor: maskValor(e.target.value) }))}
-                placeholder="R$ 0,00" style={{ ...S.input, flex: 1 }} />
-              <button onClick={addPlano} style={{ ...S.btnPri, padding: "12px 16px", fontSize: 18, flexShrink: 0 }}>+</button>
+
+            {/* Adicionar novo plano */}
+            <div style={{ background: C.bgCard2, borderRadius: 10, padding: "12px", marginTop: 10, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 10, textTransform: "uppercase", letterSpacing: 1 }}>Novo plano</div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <input value={newPlano.nome} onChange={e => setNewPlano(p => ({ ...p, nome: e.target.value }))} placeholder="Nome do plano" style={{ ...S.input, flex: 2 }} />
+                <input inputMode="numeric" value={newPlano.valor}
+                  onChange={e => setNewPlano(p => ({ ...p, valor: maskValor(e.target.value) }))}
+                  placeholder="R$ 0,00" style={{ ...S.input, flex: 1 }} />
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <select value={newPlano.periodicidade} onChange={e => setNewPlano(p => ({ ...p, periodicidade: e.target.value }))}
+                  style={{ ...S.input, flex: 1, cursor: "pointer" }}>
+                  <option value="mensal">Mensal</option>
+                  <option value="trimestral">Trimestral</option>
+                  <option value="semestral">Semestral</option>
+                </select>
+                <button onClick={addPlano} style={{ ...S.btnPri, padding: "12px 20px", fontSize: 14, flexShrink: 0 }}>+ Adicionar</button>
+              </div>
             </div>
           </div>
 
