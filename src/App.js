@@ -93,17 +93,6 @@ const C = {
   danger:     "#ff5c5c",
 };
 
-function getStatus(client) {
-  const pags = client.pagamentos || [];
-  if (pags.length > 0) {
-    const last  = pags[pags.length - 1];
-    const lastD = new Date(last.data);
-    const now   = new Date();
-    if (lastD.getMonth() === now.getMonth() && lastD.getFullYear() === now.getFullYear())
-      return "pago";
-  }
-  return todayDay() > client.vencimento ? "atrasado" : "pendente";
-}
 
 const STATUS = {
   pago:     { bg: "#002a1a", text: "#00d68f", border: "#00d68f30", label: "Pago" },
