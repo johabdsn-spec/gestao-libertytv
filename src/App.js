@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   collection, addDoc, updateDoc, deleteDoc,
   doc, onSnapshot, query, orderBy
@@ -119,51 +119,20 @@ const S = {
 function enviarWhatsApp(client, pagamento, tipo = "comprovante") {
   const tel = (client.telefone || "").replace(/\D/g, "");
   if (!tel) { alert("Cliente sem telefone cadastrado!"); return; }
-  const nome = client.nome.split(" ")[0];
+
   let msg = "";
   if (tipo === "comprovante") {
-    msg =
-      `Ola ${nome}!\n\n` +
-      `Seu pagamento foi confirmado.\n\n` +
-      `Liberty TV\n` +
-      `Valor: ${fmt(pagamento.valor)}\n` +
-      `Data: ${ptDate(pagamento.data)}\n` +
-      `Referencia: ${mesAno()}\n` +
-      `Prox. vencimento: Dia ${client.vencimento}\n\n` +
-      `Obrigado pela preferencia!`;
+    msg = "Seu pagamento foi confirmado e seu acesso renovado. Obrigado!";
   } else {
-    msg =
-      `Ola ${nome}!\n\n` +
-      `Passando para lembrar que sua mensalidade da Liberty TV ` +
-      `no valor de ${fmt(client.valor)} vence dia ${client.vencimento}.\n\n` +
-      `Contamos com voce! Qualquer duvida estamos a disposicao.`;
+    const diff = diffDias(client.vencimento);
+    let quando = "";
+    if (diff < 0)      quando = `*dia ${ptDate(client.vencimento)}*`;
+    else if (diff === 0) quando = `*hoje*`;
+    else if (diff === 1) quando = `*amanha*`;
+    else                 quando = `*em ${diff} dias*`;
+    msg = `Ola! Passando para lembrar que o seu vencimento e ${quando}. Vamos renovar?`;
   }
   window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`, "_blank");
-}
-
-// ── Notificações ──────────────────────────────────────────────
-function useNotifications(clients) {
-  const [notifStatus, setNotifStatus] = useState(Notification?.permission || "default");
-  const dispararNotificacoes = useCallback((cls) => {
-    if (!("Notification" in window) || Notification.permission !== "granted") return;
-    const ativos    = cls.filter(c => c.ativo !== false);
-    const hoje      = ativos.filter(isDueToday);
-    const atrasados = ativos.filter(c => getStatus(c) === "atrasado");
-    if (hoje.length > 0)
-      new Notification("Liberty TV - Vencimentos hoje", { body: hoje.map(c => `${c.nome} - ${fmt(c.valor)}`).join("\n") });
-    if (atrasados.length > 0)
-      new Notification(`Liberty TV - ${atrasados.length} cliente(s) em atraso`, { body: atrasados.map(c => `${c.nome} - dia ${c.vencimento}`).join("\n") });
-  }, []);
-  const requestPermission = useCallback(async () => {
-    if (!("Notification" in window)) return;
-    const perm = await Notification.requestPermission();
-    setNotifStatus(perm);
-    if (perm === "granted") dispararNotificacoes(clients);
-  }, [clients, dispararNotificacoes]);
-  useEffect(() => {
-    if (clients.length > 0 && Notification?.permission === "granted") dispararNotificacoes(clients);
-  }, [clients.length]);
-  return { notifStatus, requestPermission };
 }
 
 // ── FORM padrão cliente ───────────────────────────────────────
@@ -225,8 +194,6 @@ export default function App() {
     window.addEventListener("resize", handler);
     return () => window.removeEventListener("resize", handler);
   }, []);
-
-  const { notifStatus, requestPermission } = useNotifications(clients);
 
   // ── Firebase ─────────────────────────────────────────────
   useEffect(() => {
@@ -294,8 +261,9 @@ export default function App() {
     const c    = clients.find(x => x.id === payModal.id);
     const novo = { valor: unMaskValor(payForm.valor), data: payForm.data, obs: payForm.obs };
     const dias = perioDias(c.periodicidade || "mensal");
-    // Novo vencimento: a partir da data do pagamento + periodicidade
-    const novoVenc = addDias(payForm.data, dias);
+    // Novo vencimento: a partir do vencimento ATUAL + periodicidade
+    const baseVenc = c.vencimento || payForm.data;
+    const novoVenc = addDias(baseVenc, dias);
     await updateDoc(doc(db, "clientes", payModal.id), {
       pagamentos: [...(c.pagamentos || []), novo],
       vencimento: novoVenc,
@@ -425,10 +393,6 @@ export default function App() {
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {notifStatus !== "granted"
-              ? <button onClick={requestPermission} style={{ background: `${C.warning}18`, border: `1px solid ${C.warning}40`, borderRadius: 6, padding: "5px 10px", fontSize: 11, color: C.warning, cursor: "pointer", fontFamily: "'Roboto',sans-serif" }}>🔔 Notificações</button>
-              : <span style={{ fontSize: 11, color: C.success, background: `${C.success}15`, padding: "4px 10px", borderRadius: 6 }}>🔔 Notificações ativas</span>
-            }
             {/* Top nav — só desktop */}
             {!isMobile && (
               <nav style={{ display: "flex", gap: 2 }}>
