@@ -126,11 +126,11 @@ function enviarWhatsApp(client, pagamento, tipo = "comprovante") {
   } else {
     const diff = diffDias(client.vencimento);
     let quando = "";
-    if (diff < 0)      quando = `*dia ${ptDate(client.vencimento)}*`;
+    if (diff < 0)        quando = `*dia ${ptDate(client.vencimento)}*`;
     else if (diff === 0) quando = `*hoje*`;
-    else if (diff === 1) quando = `*amanha*`;
+    else if (diff === 1) quando = `*amanhã*`;
     else                 quando = `*em ${diff} dias*`;
-    msg = `Ola! Passando para lembrar que o seu vencimento e ${quando}. Vamos renovar?`;
+    msg = `Olá! Passando para lembrar que o seu vencimento é ${quando}. Vamos renovar?`;
   }
   window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`, "_blank");
 }
@@ -551,7 +551,7 @@ export default function App() {
                     {st !== "pago" && <button onClick={() => openPay(c)} style={{ ...S.btnPri, padding: "9px 14px", fontSize: 13, flex: 1 }}>Registrar pagamento</button>}
                     <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, padding: "9px 14px", fontSize: 12, flex: 1 }}>Enviar cobrança</button>
                     {st === "pago" && last && c.telefone && <button onClick={() => enviarWhatsApp(c, last, "comprovante")} style={{ ...S.btnWa, padding: "9px 12px" }}>Comprovante WA</button>}
-                    {st === "pago" && <button onClick={() => desfazerPagamento(c.id)} style={{ ...S.btnSm, padding: "9px 10px" }}>↩</button>}
+                    {st === "pago" && <button onClick={() => desfazerPagamento(c.id)} style={{ ...S.btnSm, padding: "9px 12px", color: C.warning, borderColor: `${C.warning}40` }}>↩ Desfazer pgto</button>}
                     <button onClick={() => openForm(c)} style={{ ...S.btnSm, padding: "9px 10px" }}>✏</button>
                     <button onClick={() => toggleAtivo(c.id, c.ativo !== false)} style={{ ...S.btnSm, padding: "9px 10px" }}>{c.ativo !== false ? "🔒" : "🔓"}</button>
                     <button onClick={() => deleteClient(c.id)} style={{ ...S.btnSm, padding: "9px 10px" }}>🗑</button>
