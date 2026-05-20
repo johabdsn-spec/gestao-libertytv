@@ -37,21 +37,37 @@ const valorMensal = (valor, perio) => {
   return valor;
 };
 
-function getStatus(client) {
-  const venc = client.vencimento; // agora é ISO "YYYY-MM-DD"
-  if (!venc) return "pendente";
-  const diff = diffDias(venc);
-  // Verifica se pagou este "ciclo" (último pagamento depois do penúltimo vencimento)
+// Verifica se o pagamento cobre o ciclo atual
+// (último pagamento foi feito após o vencimento anterior)
+function getPagamentoStatus(client) {
   const pags = client.pagamentos || [];
-  if (pags.length > 0) {
-    const last  = pags[pags.length - 1];
-    const lastD = new Date(last.data + "T12:00");
-    const vencD = new Date(venc + "T12:00");
-    const dias  = perioDias(client.periodicidade || "mensal");
-    const prevVenc = new Date(vencD); prevVenc.setDate(prevVenc.getDate() - dias);
-    if (lastD >= prevVenc) return "pago";
-  }
-  if (diff < 0) return "atrasado";
+  if (pags.length === 0) return "pendente";
+  const ultimo = pags[pags.length - 1];
+  const venc   = client.vencimento;
+  if (!venc) return "pendente";
+  const dias     = perioDias(client.periodicidade || "mensal");
+  const vencD    = new Date(venc + "T12:00");
+  const prevVenc = new Date(vencD); prevVenc.setDate(prevVenc.getDate() - dias);
+  const pagoD    = new Date(ultimo.data + "T12:00");
+  // Pagamento cobre o ciclo se foi feito após o vencimento anterior
+  return pagoD >= prevVenc ? "pago" : "pendente";
+}
+
+function getStatus(client) {
+  const venc = client.vencimento;
+  if (!venc) return "pendente";
+  const diff     = diffDias(venc);
+  const pagStatus = getPagamentoStatus(client);
+
+  // Se pagou e vencimento ainda não chegou → Pago
+  if (pagStatus === "pago" && diff > 0) return "pago";
+  // Se pagou e vence hoje → "pago_vencendo" (vence hoje mas já pagou)
+  if (pagStatus === "pago" && diff === 0) return "pago_vencendo";
+  // Se não pagou e vence hoje → pendente vencendo
+  if (pagStatus === "pendente" && diff === 0) return "vencendo_hoje";
+  // Se não pagou e passou → atrasado
+  if (pagStatus === "pendente" && diff < 0) return "atrasado";
+  // Futuro sem pagamento
   return "pendente";
 }
 const maskTel = (v) => {
@@ -95,13 +111,15 @@ const C = {
 
 
 const STATUS = {
-  pago:     { bg: "#002a1a", text: "#00d68f", border: "#00d68f30", label: "Pago" },
-  pendente: { bg: "#2a1a00", text: "#ffb020", border: "#ffb02030", label: "Pendente" },
-  atrasado: { bg: "#2a0a0a", text: "#ff5c5c", border: "#ff5c5c30", label: "Atrasado" },
+  pago:           { bg: "#002a1a", text: "#00d68f", border: "#00d68f30", label: "Pago" },
+  pago_vencendo:  { bg: "#002a1a", text: "#00d68f", border: "#00d68f30", label: "Pago ✓" },
+  pendente:       { bg: "#2a1a00", text: "#ffb020", border: "#ffb02030", label: "Pendente" },
+  vencendo_hoje:  { bg: "#2a1000", text: "#ff8c00", border: "#ff8c0040", label: "Vence hoje" },
+  atrasado:       { bg: "#2a0a0a", text: "#ff5c5c", border: "#ff5c5c30", label: "Atrasado" },
 };
 
-const isDueToday = (c) => { const d = diffDias(c.vencimento); return d >= 0 && d <= 2 && getStatus(c) !== "pago"; };
-const isDueSoon  = (c) => { const d = diffDias(c.vencimento); return d > 0 && d <= 3 && getStatus(c) !== "pago"; };
+const isDueToday = (c) => { const st = getStatus(c); return st === "vencendo_hoje" || st === "pago_vencendo"; };
+const isDueSoon  = (c) => { const d = diffDias(c.vencimento); return d > 0 && d <= 3 && getStatus(c) === "pendente"; };
 
 const S = {
   page:    { fontFamily: "'Roboto', sans-serif", background: C.bg, minHeight: "100vh", color: C.white },
@@ -208,11 +226,11 @@ export default function App() {
   const ativos        = clients.filter(c => c.ativo !== false);
   const dueToday      = ativos.filter(isDueToday);
   const dueSoon       = ativos.filter(isDueSoon);
-  const totalPago     = ativos.filter(c => getStatus(c) === "pago").length;
-  const totalPendente = ativos.filter(c => getStatus(c) === "pendente").length;
+  const totalPago     = ativos.filter(c => ["pago","pago_vencendo"].includes(getStatus(c))).length;
+  const totalPendente = ativos.filter(c => ["pendente","vencendo_hoje"].includes(getStatus(c))).length;
   const totalAtrasado = ativos.filter(c => getStatus(c) === "atrasado").length;
   const receitaTotal  = ativos.reduce((s, c) => s + valorMensal(Number(c.valor || 0), c.periodicidade), 0);
-  const receitaPaga   = ativos.filter(c => getStatus(c) === "pago").reduce((s, c) => s + valorMensal(Number(c.valor || 0), c.periodicidade), 0);
+  const receitaPaga   = ativos.filter(c => ["pago","pago_vencendo"].includes(getStatus(c))).reduce((s, c) => s + valorMensal(Number(c.valor || 0), c.periodicidade), 0);
   const alertCount    = dueToday.length + dueSoon.length + totalAtrasado;
 
   const filtered = clients.filter(c => {
@@ -261,17 +279,34 @@ export default function App() {
     const c    = clients.find(x => x.id === payModal.id);
     const novo = { valor: unMaskValor(payForm.valor), data: payForm.data, obs: payForm.obs };
     const dias = perioDias(c.periodicidade || "mensal");
-    // Novo vencimento: a partir do vencimento ATUAL + periodicidade
-    const baseVenc = c.vencimento || payForm.data;
-    const novoVenc = addDias(baseVenc, dias);
+    const diff = diffDias(c.vencimento);
+
+    // Só renova automaticamente se pagou no dia ou depois do vencimento
+    // Se pagou antes, mantém vencimento e aguarda confirmação manual
+    let novoVenc = c.vencimento;
+    let renovado = false;
+    if (diff <= 0) {
+      // Pagou no dia ou atrasado: novo vencimento a partir da data de pagamento
+      novoVenc = addDias(payForm.data, dias);
+      renovado = true;
+    }
+    // Se pagou antes: vencimento não muda agora, renovação será manual
+
     await updateDoc(doc(db, "clientes", payModal.id), {
       pagamentos: [...(c.pagamentos || []), novo],
       vencimento: novoVenc,
     });
     setSaving(false);
-    setLastPay({ client: { ...c, vencimento: novoVenc }, pagamento: novo });
+    setLastPay({ client: { ...c, vencimento: novoVenc }, pagamento: novo, renovado });
     setPayModal(null);
     setPayForm({ valor: "", data: todayISO(), obs: "" });
+  };
+
+  // Confirmação manual de renovação (para quem pagou antes do vencimento)
+  const confirmarRenovacao = async (client) => {
+    const dias     = perioDias(client.periodicidade || "mensal");
+    const novoVenc = addDias(client.vencimento, dias);
+    await updateDoc(doc(db, "clientes", client.id), { vencimento: novoVenc });
   };
 
   const desfazerPagamento = async (id) => {
@@ -441,12 +476,11 @@ export default function App() {
 
             {/* Bloco único de alertas */}
             {(() => {
-              const hoje    = new Date(); hoje.setHours(0,0,0,0);
-              const amanha  = new Date(); amanha.setDate(amanha.getDate()+1); amanha.setHours(0,0,0,0);
-              const vencendoHoje   = ativos.filter(c => { const d = diffDias(c.vencimento); return d === 0 && getStatus(c) !== "pago"; });
-              const vencendoAmanha = ativos.filter(c => { const d = diffDias(c.vencimento); return d === 1 && getStatus(c) !== "pago"; });
+              const vencendoHoje   = ativos.filter(c => getStatus(c) === "vencendo_hoje");
+              const pagoVencendo   = ativos.filter(c => getStatus(c) === "pago_vencendo");
+              const vencendoAmanha = ativos.filter(c => diffDias(c.vencimento) === 1 && getStatus(c) === "pendente");
               const atrasados      = ativos.filter(c => getStatus(c) === "atrasado");
-              const totalAlertas   = vencendoHoje.length + vencendoAmanha.length + atrasados.length;
+              const totalAlertas   = vencendoHoje.length + pagoVencendo.length + vencendoAmanha.length + atrasados.length;
 
               if (totalAlertas === 0) return (
                 <div style={{ ...S.card, padding: "20px 16px", textAlign: "center" }}>
@@ -455,6 +489,13 @@ export default function App() {
                   <div style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>Nenhum vencimento para hoje ou amanhã</div>
                 </div>
               );
+
+              const lista = [
+                ...vencendoHoje.map(c   => ({ ...c, _tag: "vencendo_hoje" })),
+                ...pagoVencendo.map(c   => ({ ...c, _tag: "pago_vencendo" })),
+                ...vencendoAmanha.map(c => ({ ...c, _tag: "amanha" })),
+                ...atrasados.map(c      => ({ ...c, _tag: "atrasado" })),
+              ];
 
               return (
                 <div style={{ ...S.card, borderColor: atrasados.length > 0 ? `${C.danger}60` : `${C.warning}60`, overflow: "hidden" }}>
@@ -466,7 +507,8 @@ export default function App() {
                         </div>
                         <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>
                           {[
-                            vencendoHoje.length   > 0 && `${vencendoHoje.length} vence(m) hoje`,
+                            vencendoHoje.length   > 0 && `${vencendoHoje.length} vence(m) hoje — pendente`,
+                            pagoVencendo.length   > 0 && `${pagoVencendo.length} vence(m) hoje — pago`,
                             vencendoAmanha.length > 0 && `${vencendoAmanha.length} vence(m) amanhã`,
                             atrasados.length      > 0 && `${atrasados.length} em atraso`,
                           ].filter(Boolean).join(" · ")}
@@ -478,18 +520,17 @@ export default function App() {
                     </div>
                   </div>
                   <div style={{ padding: "10px 16px 14px" }}>
-                    {[
-                      ...vencendoHoje.map(c   => ({ ...c, _tag: "hoje" })),
-                      ...vencendoAmanha.map(c => ({ ...c, _tag: "amanha" })),
-                      ...atrasados.map(c      => ({ ...c, _tag: "atrasado" })),
-                    ].slice(0, 4).map(c => (
+                    {lista.slice(0, 4).map(c => (
                       <div key={c.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border2}` }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           <div style={{ width: 34, height: 34, borderRadius: "50%", background: `${C.blue}25`, border: `1px solid ${C.blue}40`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: C.white, fontSize: 14, flexShrink: 0 }}>{initial(c.nome)}</div>
                           <div>
                             <div style={{ fontWeight: 500, fontSize: 14 }}>{c.nome}</div>
-                            <div style={{ fontSize: 11, color: c._tag === "atrasado" ? C.danger : c._tag === "hoje" ? C.warning : C.textMuted }}>
-                              {c._tag === "atrasado" ? `Em atraso desde ${ptDate(c.vencimento)}` : c._tag === "hoje" ? "Vence hoje" : "Vence amanhã"} · {fmt(c.valor)}
+                            <div style={{ fontSize: 11, color: c._tag === "atrasado" ? C.danger : c._tag === "pago_vencendo" ? C.success : c._tag === "vencendo_hoje" ? C.warning : C.textMuted }}>
+                              {c._tag === "atrasado"     ? `Em atraso desde ${ptDate(c.vencimento)}` :
+                               c._tag === "pago_vencendo"? "Vence hoje — pagamento já realizado ✅" :
+                               c._tag === "vencendo_hoje"? "Vence hoje — pagamento pendente ⏳" :
+                               "Vence amanhã"} · {fmt(c.valor)}
                             </div>
                           </div>
                         </div>
@@ -548,10 +589,13 @@ export default function App() {
 
                   {/* Ações */}
                   <div style={{ padding: "0 16px 14px", display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {st !== "pago" && <button onClick={() => openPay(c)} style={{ ...S.btnPri, padding: "9px 14px", fontSize: 13, flex: 1 }}>Registrar pagamento</button>}
+                    {st === "pago_vencendo" && (
+                      <button onClick={() => confirmarRenovacao(c)} style={{ ...S.btnPri, padding: "9px 14px", fontSize: 13, flex: 1, background: `linear-gradient(135deg,${C.success},#059669)` }}>✓ Confirmar renovação</button>
+                    )}
+                    {!["pago","pago_vencendo"].includes(st) && <button onClick={() => openPay(c)} style={{ ...S.btnPri, padding: "9px 14px", fontSize: 13, flex: 1 }}>Registrar pagamento</button>}
                     <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, padding: "9px 14px", fontSize: 12, flex: 1 }}>Enviar cobrança</button>
-                    {st === "pago" && last && c.telefone && <button onClick={() => enviarWhatsApp(c, last, "comprovante")} style={{ ...S.btnWa, padding: "9px 12px" }}>Comprovante WA</button>}
-                    {st === "pago" && <button onClick={() => desfazerPagamento(c.id)} style={{ ...S.btnSm, padding: "9px 12px", color: C.warning, borderColor: `${C.warning}40` }}>↩ Desfazer pgto</button>}
+                    {["pago","pago_vencendo"].includes(st) && last && c.telefone && <button onClick={() => enviarWhatsApp(c, last, "comprovante")} style={{ ...S.btnWa, padding: "9px 12px" }}>Comprovante WA</button>}
+                    {["pago","pago_vencendo"].includes(st) && <button onClick={() => desfazerPagamento(c.id)} style={{ ...S.btnSm, padding: "9px 12px", color: C.warning, borderColor: `${C.warning}40` }}>↩ Desfazer pgto</button>}
 
                     {/* Editar */}
                     <button onClick={() => openForm(c)} title="Editar" style={{ ...S.btnSm, padding: "8px 10px", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -659,29 +703,39 @@ export default function App() {
           <div className="fin">
             <h2 style={{ fontSize: 19, fontWeight: 700, marginBottom: 20 }}>Alertas</h2>
             {[
-              { title: "Vencendo hoje",    color: C.blueLight, border: `${C.blue}50`,    list: ativos.filter(c => diffDias(c.vencimento) === 0 && getStatus(c) !== "pago") },
-              { title: "Vence amanhã",     color: C.warning,   border: `${C.warning}40`, list: ativos.filter(c => diffDias(c.vencimento) === 1 && getStatus(c) !== "pago") },
-              { title: "Próximos 5 dias",  color: C.textMuted, border: `${C.border}`,    list: ativos.filter(c => { const d = diffDias(c.vencimento); return d >= 2 && d <= 5 && getStatus(c) !== "pago"; }) },
-              { title: "Atrasados",        color: C.danger,    border: `${C.danger}40`,  list: ativos.filter(c => getStatus(c) === "atrasado") },
+              { title: "Vence hoje — Pagamento pendente", color: C.warning,   border: `${C.warning}40`, list: ativos.filter(c => getStatus(c) === "vencendo_hoje") },
+              { title: "Vence hoje — Já pago ✅",         color: C.success,   border: `${C.success}40`, list: ativos.filter(c => getStatus(c) === "pago_vencendo") },
+              { title: "Vence amanhã",                    color: C.blueLight, border: `${C.blue}50`,    list: ativos.filter(c => diffDias(c.vencimento) === 1 && getStatus(c) === "pendente") },
+              { title: "Próximos 5 dias",                 color: C.textMuted, border: C.border,         list: ativos.filter(c => { const d = diffDias(c.vencimento); return d >= 2 && d <= 5 && getStatus(c) === "pendente"; }) },
+              { title: "Atrasados",                       color: C.danger,    border: `${C.danger}40`,  list: ativos.filter(c => getStatus(c) === "atrasado") },
             ].map(group => group.list.length > 0 && (
               <div key={group.title} style={{ marginBottom: 22 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: group.color, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>{group.title} ({group.list.length})</div>
-                {group.list.map(c => (
-                  <div key={c.id} style={{ ...S.card, borderColor: group.border, padding: "14px 16px", marginBottom: 8 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                      <div style={{ width: 40, height: 40, borderRadius: "50%", background: `${C.blue}25`, border: `1px solid ${C.blue}40`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: C.white, fontSize: 16, flexShrink: 0 }}>{initial(c.nome)}</div>
-                      <div>
-                        <div style={{ fontWeight: 500 }}>{c.nome}</div>
-                        <div style={{ fontSize: 12, color: C.textMuted }}>@{c.usuario} · Vence {ptDate(c.vencimento)} · {fmt(c.valor)}</div>
-                        <div style={{ fontSize: 11, color: C.textDim, marginTop: 1 }}>{c.planoNome || ""}{c.periodicidade && c.periodicidade !== "mensal" ? ` · ${c.periodicidade === "trimestral" ? "Trimestral" : "Semestral"}` : ""}</div>
+                {group.list.map(c => {
+                  const st = getStatus(c);
+                  return (
+                    <div key={c.id} style={{ ...S.card, borderColor: group.border, padding: "14px 16px", marginBottom: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                        <div style={{ width: 40, height: 40, borderRadius: "50%", background: `${C.blue}25`, border: `1px solid ${C.blue}40`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: C.white, fontSize: 16, flexShrink: 0 }}>{initial(c.nome)}</div>
+                        <div>
+                          <div style={{ fontWeight: 500 }}>{c.nome}</div>
+                          <div style={{ fontSize: 12, color: C.textMuted }}>@{c.usuario} · Vence {ptDate(c.vencimento)} · {fmt(c.valor)}</div>
+                          <div style={{ fontSize: 11, color: C.textDim, marginTop: 1 }}>{c.planoNome || ""}{c.periodicidade && c.periodicidade !== "mensal" ? ` · ${c.periodicidade === "trimestral" ? "Trimestral" : "Semestral"}` : ""}</div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {st === "pago_vencendo" ? (
+                          <button onClick={() => confirmarRenovacao(c)} style={{ ...S.btnPri, flex: 1, padding: "10px", fontSize: 13, background: `linear-gradient(135deg,${C.success},#059669)` }}>
+                            ✓ Confirmar renovação
+                          </button>
+                        ) : (
+                          <button onClick={() => openPay(c)} style={{ ...S.btnPri, flex: 1, padding: "10px", fontSize: 13 }}>Registrar pagamento</button>
+                        )}
+                        <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, flex: 1, padding: "10px", fontSize: 13 }}>Enviar cobrança</button>
                       </div>
                     </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button onClick={() => openPay(c)} style={{ ...S.btnPri, flex: 1, padding: "10px", fontSize: 13 }}>Registrar pagamento</button>
-                      <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, flex: 1, padding: "10px", fontSize: 13 }}>Enviar cobrança</button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ))}
             {alertCount === 0 && (
@@ -983,7 +1037,15 @@ export default function App() {
             <div style={{ fontSize: 52, marginBottom: 14 }}>✅</div>
             <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>Pagamento registrado!</h3>
             <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 8 }}>{lastPay.client.nome}</div>
-            <div style={{ fontSize: 30, fontWeight: 900, color: C.success, marginBottom: 24 }}>{fmt(lastPay.pagamento.valor)}</div>
+            <div style={{ fontSize: 30, fontWeight: 900, color: C.success, marginBottom: 12 }}>{fmt(lastPay.pagamento.valor)}</div>
+            {lastPay.renovado
+              ? <div style={{ fontSize: 13, color: C.success, background: `${C.success}15`, borderRadius: 8, padding: "8px 14px", marginBottom: 20 }}>
+                  Renovação aplicada · Próx. vencimento: {ptDate(lastPay.client.vencimento)}
+                </div>
+              : <div style={{ fontSize: 13, color: C.warning, background: `${C.warning}15`, borderRadius: 8, padding: "8px 14px", marginBottom: 20 }}>
+                  Pagamento registrado. Renovação será aplicada no vencimento ({ptDate(lastPay.client.vencimento)}).
+                </div>
+            }
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {lastPay.client.telefone && (
                 <button onClick={() => { enviarWhatsApp(lastPay.client, lastPay.pagamento, "comprovante"); setLastPay(null); }}
