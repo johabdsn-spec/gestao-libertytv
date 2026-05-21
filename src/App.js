@@ -271,19 +271,21 @@ export default function App() {
     setSaving(true);
     const c    = clients.find(x => x.id === payModal.id);
     const novo = { valor: unMaskValor(payForm.valor), data: payForm.data, obs: payForm.obs };
-    const dias = perioDias(c.periodicidade || "mensal");
-    const diff = diffDias(c.vencimento);
-
-    // Só renova automaticamente se pagou no dia ou depois do vencimento
-    // Se pagou antes, mantém vencimento e aguarda confirmação manual
     let novoVenc = c.vencimento;
     let renovado = false;
-    if (diff <= 0) {
-      // Pagou no dia ou atrasado: novo vencimento a partir da data de pagamento
-      novoVenc = addDias(payForm.data, dias);
+
+    if (payForm.renovar) {
+      const diff = diffDias(c.vencimento);
+      const dias = perioDias(c.periodicidade || "mensal");
+      if (diff <= 0) {
+        // Atrasado ou no dia: conta da data do pagamento
+        novoVenc = addDias(payForm.data, dias);
+      } else {
+        // Antes do vencimento: conta do vencimento atual
+        novoVenc = addDias(c.vencimento, dias);
+      }
       renovado = true;
     }
-    // Se pagou antes: vencimento não muda agora, renovação será manual
 
     await updateDoc(doc(db, "clientes", payModal.id), {
       pagamentos: [...(c.pagamentos || []), novo],
@@ -292,14 +294,16 @@ export default function App() {
     setSaving(false);
     setLastPay({ client: { ...c, vencimento: novoVenc }, pagamento: novo, renovado });
     setPayModal(null);
-    setPayForm({ valor: "", data: todayISO(), obs: "" });
+    setPayForm({ valor: "", data: todayISO(), obs: "", renovar: false });
   };
 
-  // Confirmação manual de renovação (para quem pagou antes do vencimento)
-  const confirmarRenovacao = async (client) => {
-    const dias     = perioDias(client.periodicidade || "mensal");
-    const novoVenc = addDias(client.vencimento, dias);
-    await updateDoc(doc(db, "clientes", client.id), { vencimento: novoVenc });
+  // Renovação independente — sem registrar pagamento
+  const confirmarRenovacao = async (c) => {
+    const diff = diffDias(c.vencimento);
+    const dias = perioDias(c.periodicidade || "mensal");
+    const base = diff <= 0 ? todayISO() : c.vencimento;
+    const novoVenc = addDias(base, dias);
+    await updateDoc(doc(db, "clientes", c.id), { vencimento: novoVenc });
   };
 
   const desfazerPagamento = async (id) => {
@@ -309,9 +313,9 @@ export default function App() {
   };
   const toggleAtivo  = async (id, ativo) => updateDoc(doc(db, "clientes", id), { ativo: !ativo });
   const deleteClient = async (id) => { if (window.confirm("Remover cliente?")) await deleteDoc(doc(db, "clientes", id)); };
-  const openPay      = (c) => {
+  const openPay = (c) => {
     setPayModal(c);
-    setPayForm({ valor: c.valor ? maskValor(String(Math.round(c.valor * 100))) : "", data: todayISO(), obs: "" });
+    setPayForm({ valor: c.valor ? maskValor(String(Math.round(c.valor * 100))) : "", data: todayISO(), obs: "", renovar: false });
   };
 
   // ── servidor CRUD ─────────────────────────────────────────
@@ -582,16 +586,40 @@ export default function App() {
 
                   {/* Ações */}
                   <div style={{ padding: "0 16px 14px", display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {getStatus(c) === "atrasado" || !getPagamentoStatus(c) === "pago"
-                      ? <button onClick={() => openPay(c)} style={{ ...S.btnPri, padding: "9px 14px", fontSize: 13, flex: 1 }}>Registrar pagamento</button>
-                      : isDueToday(c) && getPagamentoStatus(c) === "pago"
-                        ? <button onClick={() => confirmarRenovacao(c)} style={{ ...S.btnPri, padding: "9px 14px", fontSize: 13, flex: 1, background: `linear-gradient(135deg,${C.success},#059669)` }}>✓ Confirmar renovação</button>
-                        : null
-                    }
-                    {getStatus(c) === "atrasado" && <button onClick={() => openPay(c)} style={{ ...S.btnPri, padding: "9px 14px", fontSize: 13, flex: 1 }}>Registrar pagamento</button>}
-                    <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, padding: "9px 14px", fontSize: 12, flex: 1 }}>Enviar cobrança</button>
-                    {last && c.telefone && <button onClick={() => enviarWhatsApp(c, last, "comprovante")} style={{ ...S.btnWa, padding: "9px 12px" }}>Comprovante WA</button>}
-                    {last && <button onClick={() => desfazerPagamento(c.id)} style={{ ...S.btnSm, padding: "9px 12px", color: C.warning, borderColor: `${C.warning}40` }}>↩ Desfazer pgto</button>}
+
+                    {/* Registrar pagamento — sempre visível */}
+                    <button onClick={() => openPay(c)} style={{ ...S.btnPri, padding: "9px 14px", fontSize: 12, flex: 1 }}>
+                      Registrar pgto
+                    </button>
+
+                    {/* Renovar — sempre visível */}
+                    <button onClick={() => confirmarRenovacao(c)} style={{ ...S.btnPri, padding: "9px 14px", fontSize: 12, flex: 1, background: `linear-gradient(135deg,${C.success},#059669)` }}>
+                      Renovar
+                    </button>
+
+                    {/* Enviar cobrança — sempre visível */}
+                    <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, padding: "9px 14px", fontSize: 12, flex: 1 }}>
+                      Enviar cobrança
+                    </button>
+
+                    {/* Comprovante WA — ícone, só se tiver telefone e pagamento */}
+                    {last && c.telefone && (
+                      <button onClick={() => enviarWhatsApp(c, last, "comprovante")} title="Enviar comprovante via WhatsApp" style={{ ...S.btnWa, padding: "8px 10px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#25d366" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                        </svg>
+                      </button>
+                    )}
+
+                    {/* Desfazer pagamento — só se tiver pagamento */}
+                    {last && (
+                      <button onClick={() => desfazerPagamento(c.id)} title="Desfazer último pagamento" style={{ ...S.btnSm, padding: "8px 10px", color: C.warning, borderColor: `${C.warning}40`, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.warning} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                          <path d="M3 3v5h5"/>
+                        </svg>
+                      </button>
+                    )}
 
                     {/* Editar */}
                     <button onClick={() => openForm(c)} title="Editar" style={{ ...S.btnSm, padding: "8px 10px", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -1017,11 +1045,28 @@ export default function App() {
             <Label>Data do pagamento *</Label>
             <input type="date" value={payForm.data} onChange={e => setPayForm(p => ({ ...p, data: e.target.value }))} style={S.input} />
           </div>
-          <div style={{ marginBottom: 12 }}>
-            <Label>Observacao (opcional)</Label>
+          <div style={{ marginBottom: 16 }}>
+            <Label>Observação (opcional)</Label>
             <input value={payForm.obs} onChange={e => setPayForm(p => ({ ...p, obs: e.target.value }))} placeholder="Ex: Pix, boleto..." style={S.input} />
           </div>
-          <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+
+          {/* Checkbox renovar */}
+          <div onClick={() => setPayForm(p => ({ ...p, renovar: !p.renovar }))}
+            style={{ display: "flex", alignItems: "center", gap: 12, background: payForm.renovar ? `${C.success}18` : C.bgCard2, border: `1px solid ${payForm.renovar ? C.success + "60" : C.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 20, cursor: "pointer", transition: "all .2s" }}>
+            <div style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${payForm.renovar ? C.success : C.border}`, background: payForm.renovar ? C.success : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all .2s" }}>
+              {payForm.renovar && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: payForm.renovar ? C.success : C.textLight }}>Renovar acesso</div>
+              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+                {payForm.renovar
+                  ? `Próx. vencimento: ${ptDate((() => { const c = clients.find(x => x.id === payModal.id); const diff = diffDias(c?.vencimento); const dias = perioDias(c?.periodicidade || "mensal"); return diff <= 0 ? addDias(payForm.data, dias) : addDias(c?.vencimento, dias); })())}`
+                  : "Marque para renovar o vencimento junto com o pagamento"}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10 }}>
             <button onClick={() => setPayModal(null)} style={{ ...S.btnSec, flex: 1 }}>Cancelar</button>
             <button onClick={registrarPagamento} disabled={saving} style={{ background: `linear-gradient(135deg,${C.success},#059669)`, color: "#fff", border: "none", borderRadius: 8, padding: 14, flex: 1, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Roboto',sans-serif" }}>
               {saving ? "Salvando..." : "Confirmar"}
