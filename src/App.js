@@ -198,6 +198,7 @@ export default function App() {
   const [editingServ,   setEditingServ]   = useState(null);
   const [servForm,      setServForm]      = useState({ nome: "", creditoValor: "", planos: [] });
   const [newPlano,      setNewPlano]      = useState({ nome: "", valor: "", periodicidade: "mensal" });
+  const [renovModal,    setRenovModal]    = useState(null); // { client, novoVenc }
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.innerWidth < 640 : true);
   useEffect(() => {
@@ -226,11 +227,19 @@ export default function App() {
   const receitaPaga   = ativos.filter(c => getStatus(c) === "pago").reduce((s, c) => s + valorMensal(Number(c.valor || 0), c.periodicidade), 0);
   const alertCount    = dueToday.length + dueSoon.length + totalAtrasado;
 
-  const filtered = clients.filter(c => {
-    const ms = (c.nome + c.usuario + (c.servidorNome || "")).toLowerCase().includes(search.toLowerCase());
-    const fs = filterStatus === "todos" || getStatus(c) === filterStatus;
-    return ms && fs;
-  });
+  const filtered = clients
+    .filter(c => {
+      const ms = (c.nome + c.usuario + (c.servidorNome || "")).toLowerCase().includes(search.toLowerCase());
+      const fs = filterStatus === "todos" || getStatus(c) === filterStatus;
+      return ms && fs;
+    })
+    .sort((a, b) => {
+      // Atrasados primeiro, depois por vencimento mais próximo
+      const sa = getStatus(a), sb = getStatus(b);
+      if (sa === "atrasado" && sb !== "atrasado") return -1;
+      if (sb === "atrasado" && sa !== "atrasado") return 1;
+      return new Date(a.vencimento) - new Date(b.vencimento);
+    });
 
   // ── cliente CRUD ──────────────────────────────────────────
   const openForm = (client = null) => {
@@ -297,13 +306,22 @@ export default function App() {
     setPayForm({ valor: "", data: todayISO(), obs: "", renovar: false });
   };
 
-  // Renovação independente — sem registrar pagamento
-  const confirmarRenovacao = async (c) => {
-    const diff = diffDias(c.vencimento);
-    const dias = perioDias(c.periodicidade || "mensal");
-    const base = diff <= 0 ? todayISO() : c.vencimento;
+  // Abre modal de renovação com data pré-calculada mas editável
+  const confirmarRenovacao = (c) => {
+    const diff     = diffDias(c.vencimento);
+    const dias     = perioDias(c.periodicidade || "mensal");
+    const base     = diff <= 0 ? todayISO() : c.vencimento;
     const novoVenc = addDias(base, dias);
-    await updateDoc(doc(db, "clientes", c.id), { vencimento: novoVenc });
+    setRenovModal({ client: c, novoVenc });
+  };
+
+  // Executa a renovação com a data confirmada
+  const executarRenovacao = async () => {
+    if (!renovModal) return;
+    setSaving(true);
+    await updateDoc(doc(db, "clientes", renovModal.client.id), { vencimento: renovModal.novoVenc });
+    setSaving(false);
+    setRenovModal(null);
   };
 
   const desfazerPagamento = async (id) => {
@@ -554,7 +572,6 @@ export default function App() {
               <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ ...S.input, width: "auto", cursor: "pointer", paddingLeft: 10, paddingRight: 10 }}>
                 <option value="todos">Todos</option>
                 <option value="pago">Pagos</option>
-                <option value="pendente">Pendentes</option>
                 <option value="atrasado">Atrasados</option>
               </select>
             </div>
@@ -589,7 +606,7 @@ export default function App() {
 
                     {/* Registrar pagamento — sempre visível */}
                     <button onClick={() => openPay(c)} style={{ ...S.btnPri, padding: "9px 14px", fontSize: 12, flex: 1 }}>
-                      Registrar pgto
+                      Registrar pagamento
                     </button>
 
                     {/* Renovar — sempre visível */}
@@ -1102,6 +1119,55 @@ export default function App() {
             </div>
           </div>
         </BottomSheet>
+      )}
+      {/* ══ MODAL RENOVAÇÃO ══ */}
+      {renovModal && (
+        <div style={S.overlay}>
+          <div style={{
+            ...S.card, width: "100%", maxWidth: 560, borderRadius: "20px 20px 0 0",
+            padding: "8px 0 0", maxHeight: "93vh", overflowY: "auto",
+            animation: "slideUp 0.25s ease"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px 12px" }}>
+              <div style={{ width: 40, height: 4, background: C.border, borderRadius: 2 }} />
+              <button onClick={() => setRenovModal(null)} style={{ background: C.bgCard2, border: `1px solid ${C.border}`, borderRadius: "50%", width: 30, height: 30, color: C.textMuted, cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+            </div>
+            <div style={{ padding: "0 20px 36px" }}>
+              <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>Renovar acesso</h3>
+              <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>{renovModal.client.nome}</div>
+
+              <div style={{ background: C.bgCard2, borderRadius: 10, padding: "12px 14px", marginBottom: 18, border: `1px solid ${C.border2}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, color: C.textMuted }}>Vencimento atual</span>
+                  <span style={{ fontSize: 13, color: C.white, fontWeight: 500 }}>{ptDate(renovModal.client.vencimento)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 12, color: C.textMuted }}>Periodicidade</span>
+                  <span style={{ fontSize: 13, color: C.blueLight, fontWeight: 500 }}>
+                    {renovModal.client.periodicidade === "trimestral" ? "Trimestral" : renovModal.client.periodicidade === "semestral" ? "Semestral" : "Mensal"}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <Label>Novo vencimento</Label>
+                <input type="date" value={renovModal.novoVenc}
+                  onChange={e => setRenovModal(r => ({ ...r, novoVenc: e.target.value }))}
+                  style={S.input} />
+                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>
+                  Calculado automaticamente. Altere se necessário.
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => setRenovModal(null)} style={{ ...S.btnSec, flex: 1 }}>Cancelar</button>
+                <button onClick={executarRenovacao} disabled={saving} style={{ ...S.btnPri, flex: 1, background: `linear-gradient(135deg,${C.success},#059669)`, padding: 14, fontSize: 14, fontWeight: 700 }}>
+                  {saving ? "Salvando..." : "✓ Confirmar renovação"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
