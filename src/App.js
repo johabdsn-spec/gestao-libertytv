@@ -37,34 +37,65 @@ const valorMensal = (valor, perio) => {
   return valor;
 };
 
-// Status baseado apenas na data de vencimento
-// Pago = hoje não passou do vencimento (independente de ter pagamento)
-// Atrasado = hoje passou do vencimento E não tem pagamento cobrindo o ciclo
+// ── LÓGICA DE CICLOS ──────────────────────────────────────────
+// Cada pagamento tem: { data, valor, obs, cicloInicio, cicloFim }
+// O sistema verifica se o ciclo atual está coberto
+
+// Retorna o ciclo atual { inicio, fim } baseado no vencimento
+function getCicloAtual(vencimento, periodicidade) {
+  const dias = perioDias(periodicidade || "mensal");
+  return {
+    inicio: addDias(vencimento, -dias),
+    fim:    vencimento,
+  };
+}
+
+// Verifica se algum pagamento cobre uma data específica
+function cicloEstaCoberto(pagamentos, vencimento, periodicidade) {
+  if (!pagamentos || pagamentos.length === 0) return false;
+  const ciclo = getCicloAtual(vencimento, periodicidade);
+  return pagamentos.some(p => {
+    if (!p.cicloFim) {
+      // Compatibilidade com pagamentos antigos sem ciclo — usa data do pagamento
+      const pagoD = new Date(p.data + "T12:00");
+      const prevD = new Date(ciclo.inicio + "T12:00");
+      return pagoD > prevD;
+    }
+    const fim = new Date(p.cicloFim + "T12:00");
+    const venc = new Date(vencimento + "T12:00");
+    return fim >= venc;
+  });
+}
+
+// Verifica se o próximo ciclo já está coberto
+function proximoCicloCoberto(pagamentos, vencimento) {
+  if (!pagamentos || pagamentos.length === 0) return false;
+  return pagamentos.some(p => {
+    if (!p.cicloFim) return false;
+    const fim  = new Date(p.cicloFim + "T12:00");
+    const venc = new Date(vencimento + "T12:00");
+    return fim > venc;
+  });
+}
+
+// Status completo: pago / adiantado / pendente / atrasado
 function getPagamentoStatus(client) {
-  const pags = client.pagamentos || [];
-  if (pags.length === 0) return "pendente";
-  const venc  = client.vencimento;
+  const venc = client.vencimento;
   if (!venc) return "pendente";
-  const dias    = perioDias(client.periodicidade || "mensal");
-  const prevVenc = addDias(venc, -dias);
-  const ultimo  = pags[pags.length - 1];
-  const pagoD   = new Date(ultimo.data + "T12:00");
-  const prevD   = new Date(prevVenc + "T12:00");
-  return pagoD >= prevD ? "pago" : "pendente";
+  const cicloOk   = cicloEstaCoberto(client.pagamentos, venc, client.periodicidade);
+  const proxOk    = proximoCicloCoberto(client.pagamentos, venc);
+  if (cicloOk && proxOk) return "adiantado";
+  if (cicloOk)           return "pago";
+  return "pendente";
 }
 
 function getStatus(client) {
   const venc = client.vencimento;
   if (!venc) return "atrasado";
-  const diff = diffDias(venc);
-  // Passou do vencimento
-  if (diff < 0) {
-    // Se tem pagamento cobrindo o ciclo atual → pago
-    if (getPagamentoStatus(client) === "pago") return "pago";
-    return "atrasado";
-  }
-  // Ainda não passou do vencimento → sempre pago (em dia)
-  return "pago";
+  const diff    = diffDias(venc);
+  const pagSt   = getPagamentoStatus(client);
+  if (diff < 0 && pagSt === "pendente") return "atrasado";
+  return "pago"; // em dia (ou adiantado — ambos são "pago" pro card)
 }
 const maskTel = (v) => {
   const d = v.replace(/\D/g, "").slice(0, 11);
@@ -107,8 +138,9 @@ const C = {
 
 
 const STATUS = {
-  pago:     { bg: "#002a1a", text: "#00d68f", border: "#00d68f30", label: "Pago" },
-  atrasado: { bg: "#2a0a0a", text: "#ff5c5c", border: "#ff5c5c30", label: "Atrasado" },
+  pago:      { bg: "#002a1a", text: "#00d68f", border: "#00d68f30", label: "Em dia" },
+  adiantado: { bg: "#1a0a3a", text: "#a78bfa", border: "#a78bfa30", label: "Adiantado" },
+  atrasado:  { bg: "#2a0a0a", text: "#ff5c5c", border: "#ff5c5c30", label: "Atrasado" },
 };
 
 const isDueToday = (c) => diffDias(c.vencimento) === 0;
@@ -279,18 +311,28 @@ export default function App() {
     if (!payForm.valor || !payForm.data) return;
     setSaving(true);
     const c    = clients.find(x => x.id === payModal.id);
-    const novo = { valor: unMaskValor(payForm.valor), data: payForm.data, obs: payForm.obs };
+    const dias = perioDias(c.periodicidade || "mensal");
+
+    // Ciclo que este pagamento cobre
+    const cicloFim    = payForm.cicloFim    || c.vencimento;
+    const cicloInicio = payForm.cicloInicio || addDias(cicloFim, -dias);
+
+    const novo = {
+      valor: unMaskValor(payForm.valor),
+      data:  payForm.data,
+      obs:   payForm.obs,
+      cicloInicio,
+      cicloFim,
+    };
+
     let novoVenc = c.vencimento;
     let renovado = false;
 
     if (payForm.renovar) {
       const diff = diffDias(c.vencimento);
-      const dias = perioDias(c.periodicidade || "mensal");
       if (diff <= 0) {
-        // Atrasado ou no dia: conta da data do pagamento
         novoVenc = addDias(payForm.data, dias);
       } else {
-        // Antes do vencimento: conta do vencimento atual
         novoVenc = addDias(c.vencimento, dias);
       }
       renovado = true;
@@ -303,7 +345,7 @@ export default function App() {
     setSaving(false);
     setLastPay({ client: { ...c, vencimento: novoVenc }, pagamento: novo, renovado });
     setPayModal(null);
-    setPayForm({ valor: "", data: todayISO(), obs: "", renovar: false });
+    setPayForm({ valor: "", data: todayISO(), obs: "", renovar: false, cicloInicio: "", cicloFim: "" });
   };
 
   // Abre modal de renovação com data pré-calculada mas editável
@@ -333,7 +375,13 @@ export default function App() {
   const deleteClient = async (id) => { if (window.confirm("Remover cliente?")) await deleteDoc(doc(db, "clientes", id)); };
   const openPay = (c) => {
     setPayModal(c);
-    setPayForm({ valor: c.valor ? maskValor(String(Math.round(c.valor * 100))) : "", data: todayISO(), obs: "", renovar: false });
+    const dias        = perioDias(c.periodicidade || "mensal");
+    const cicloFim    = c.vencimento || todayISO();
+    const cicloInicio = addDias(cicloFim, -dias);
+    setPayForm({
+      valor: c.valor ? maskValor(String(Math.round(c.valor * 100))) : "",
+      data: todayISO(), obs: "", renovar: false, cicloInicio, cicloFim
+    });
   };
 
   // ── servidor CRUD ─────────────────────────────────────────
@@ -580,7 +628,8 @@ export default function App() {
 
             {filtered.map(c => {
               const st   = getStatus(c);
-              const sc   = STATUS[st] || STATUS.atrasado;
+              const pagSt = getPagamentoStatus(c);
+              const sc   = STATUS[pagSt === "adiantado" ? "adiantado" : st] || STATUS.atrasado;
               const last = (c.pagamentos || []).slice(-1)[0];
               const exp  = selectedId === c.id;
               return (
@@ -722,11 +771,16 @@ export default function App() {
                         ? <div style={{ color: C.textDim, fontSize: 13 }}>Nenhum pagamento registrado</div>
                         : [...(c.pagamentos || [])].reverse().map((p, i) => (
                           <div key={i} style={{ background: C.bgCard2, borderRadius: 8, padding: "10px 12px", marginBottom: 6, border: `1px solid ${C.border2}` }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: p.obs ? 6 : 0 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: p.cicloInicio ? 4 : 0 }}>
                               <span style={{ fontWeight: 700, color: C.success, fontSize: 15 }}>{fmt(p.valor)}</span>
                               <span style={{ fontSize: 12, color: C.textMuted }}>{ptDate(p.data)}</span>
                             </div>
-                            {p.obs && <div style={{ fontSize: 12, color: C.textMuted }}>{p.obs}</div>}
+                            {p.cicloInicio && p.cicloFim && (
+                              <div style={{ fontSize: 11, color: C.blueLight, marginTop: 3 }}>
+                                Cobre: {ptDate(p.cicloInicio)} → {ptDate(p.cicloFim)}
+                              </div>
+                            )}
+                            {p.obs && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>{p.obs}</div>}
                           </div>
                         ))
                       }
@@ -752,20 +806,23 @@ export default function App() {
               <div key={group.title} style={{ marginBottom: 22 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: group.color, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>{group.title} ({group.list.length})</div>
                 {group.list.map(c => {
-                  const temPagamento = getPagamentoStatus(c) === "pago";
-                  const venceHoje    = diffDias(c.vencimento) === 0;
+                  const temPagamento = getPagamentoStatus(c) === "pago" || getPagamentoStatus(c) === "adiantado";
+                  const pagSt        = getPagamentoStatus(c);
                   return (
                     <div key={c.id} style={{ ...S.card, borderColor: group.border, padding: "14px 16px", marginBottom: 8 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                         <div style={{ width: 40, height: 40, borderRadius: "50%", background: `${C.blue}25`, border: `1px solid ${C.blue}40`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: C.white, fontSize: 16, flexShrink: 0 }}>{initial(c.nome)}</div>
-                        <div>
-                          <div style={{ fontWeight: 500 }}>{c.nome}</div>
-                          <div style={{ fontSize: 12, color: C.textMuted }}>@{c.usuario} · Vence {ptDate(c.vencimento)} · {fmt(c.valor)}</div>
-                          {venceHoje && (
-                            <div style={{ fontSize: 11, marginTop: 3, color: temPagamento ? C.success : C.warning }}>
-                              {temPagamento ? "Pagamento já realizado ✅ — aguardando renovação" : "Pagamento pendente ⏳"}
-                            </div>
-                          )}
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                            <div style={{ fontWeight: 500 }}>{c.nome}</div>
+                            <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20,
+                              background: pagSt === "adiantado" ? "#a78bfa25" : temPagamento ? `${C.success}20` : `${C.warning}20`,
+                              color: pagSt === "adiantado" ? "#a78bfa" : temPagamento ? C.success : C.warning, flexShrink: 0
+                            }}>
+                              {pagSt === "adiantado" ? "Adiantado 🔄" : temPagamento ? "Pago ✓" : "Pendente"}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>@{c.usuario} · Vence {ptDate(c.vencimento)} · {fmt(c.valor)}</div>
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: 8 }}>
@@ -1052,6 +1109,7 @@ export default function App() {
         <BottomSheet onClose={() => setPayModal(null)}>
           <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>Registrar pagamento</h3>
           <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 18 }}>{payModal.nome}</div>
+
           <div style={{ marginBottom: 12 }}>
             <Label>Valor recebido *</Label>
             <input inputMode="numeric" value={payForm.valor}
@@ -1065,6 +1123,26 @@ export default function App() {
           <div style={{ marginBottom: 16 }}>
             <Label>Observação (opcional)</Label>
             <input value={payForm.obs} onChange={e => setPayForm(p => ({ ...p, obs: e.target.value }))} placeholder="Ex: Pix, boleto..." style={S.input} />
+          </div>
+
+          {/* Ciclo do pagamento */}
+          <div style={{ background: C.bgCard2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px", marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: C.blueLight, fontWeight: 600, marginBottom: 10 }}>📅 Ciclo que este pagamento cobre</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+              <div style={{ flex: 1 }}>
+                <Label>De</Label>
+                <input type="date" value={payForm.cicloInicio}
+                  onChange={e => setPayForm(p => ({ ...p, cicloInicio: e.target.value }))}
+                  style={{ ...S.input, fontSize: 13 }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <Label>Até</Label>
+                <input type="date" value={payForm.cicloFim}
+                  onChange={e => setPayForm(p => ({ ...p, cicloFim: e.target.value }))}
+                  style={{ ...S.input, fontSize: 13 }} />
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: C.textDim }}>Preenchido automaticamente. Ajuste se necessário.</div>
           </div>
 
           {/* Checkbox renovar */}
