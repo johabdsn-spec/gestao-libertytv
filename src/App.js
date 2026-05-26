@@ -37,38 +37,65 @@ const valorMensal = (valor, perio) => {
   return valor;
 };
 
-// Verifica se existe pagamento cobrindo o ciclo ATUAL
-// O ciclo atual começa no vencimento anterior (exclusive) e vai até o vencimento atual
+// ── LÓGICA DE CICLOS ──────────────────────────────────────────
+// Cada pagamento tem: { data, valor, obs, cicloInicio, cicloFim }
+// O sistema verifica se o ciclo atual está coberto
+
+// Retorna o ciclo atual { inicio, fim } baseado no vencimento
+function getCicloAtual(vencimento, periodicidade) {
+  const dias = perioDias(periodicidade || "mensal");
+  return {
+    inicio: addDias(vencimento, -dias),
+    fim:    vencimento,
+  };
+}
+
+// Verifica se algum pagamento cobre uma data específica
+function cicloEstaCoberto(pagamentos, vencimento, periodicidade) {
+  if (!pagamentos || pagamentos.length === 0) return false;
+  const ciclo = getCicloAtual(vencimento, periodicidade);
+  return pagamentos.some(p => {
+    if (!p.cicloFim) {
+      // Compatibilidade com pagamentos antigos sem ciclo — usa data do pagamento
+      const pagoD = new Date(p.data + "T12:00");
+      const prevD = new Date(ciclo.inicio + "T12:00");
+      return pagoD > prevD;
+    }
+    const fim = new Date(p.cicloFim + "T12:00");
+    const venc = new Date(vencimento + "T12:00");
+    return fim >= venc;
+  });
+}
+
+// Verifica se o próximo ciclo já está coberto
+function proximoCicloCoberto(pagamentos, vencimento) {
+  if (!pagamentos || pagamentos.length === 0) return false;
+  return pagamentos.some(p => {
+    if (!p.cicloFim) return false;
+    const fim  = new Date(p.cicloFim + "T12:00");
+    const venc = new Date(vencimento + "T12:00");
+    return fim > venc;
+  });
+}
+
+// Status completo: pago / adiantado / pendente / atrasado
 function getPagamentoStatus(client) {
-  const pags = client.pagamentos || [];
-  if (pags.length === 0) return "pendente";
   const venc = client.vencimento;
   if (!venc) return "pendente";
-  const dias      = perioDias(client.periodicidade || "mensal");
-  // Vencimento anterior = vencimento atual - periodicidade
-  const prevVenc  = addDias(venc, -dias);
-  const prevD     = new Date(prevVenc + "T12:00");
-  // Verifica se algum pagamento foi feito DEPOIS do vencimento anterior
-  // (ou seja, pertence ao ciclo atual)
-  const temPagoNoCiclo = pags.some(p => {
-    const pagoD = new Date(p.data + "T12:00");
-    return pagoD > prevD; // estritamente depois do vencimento anterior
-  });
-  return temPagoNoCiclo ? "pago" : "pendente";
+  const cicloOk   = cicloEstaCoberto(client.pagamentos, venc, client.periodicidade);
+  const proxOk    = proximoCicloCoberto(client.pagamentos, venc);
+  if (cicloOk && proxOk) return "adiantado";
+  if (cicloOk)           return "pago";
+  return "pendente";
 }
 
 function getStatus(client) {
   const venc = client.vencimento;
   if (!venc) return "atrasado";
-  const diff = diffDias(venc);
-  // Passou do vencimento
-  if (diff < 0) {
-    // Se tem pagamento cobrindo o ciclo atual → pago
-    if (getPagamentoStatus(client) === "pago") return "pago";
-    return "atrasado";
-  }
-  // Ainda não passou do vencimento → sempre pago (em dia)
-  return "pago";
+  const diff    = diffDias(venc);
+  const pagSt   = getPagamentoStatus(client);
+  if (diff < 0 && pagSt === "pendente") return "atrasado";
+  return "pago"; // em dia (ou adiantado — ambos são "pago" pro card)
 }
 const maskTel = (v) => {
   const d = v.replace(/\D/g, "").slice(0, 11);
@@ -111,9 +138,12 @@ const C = {
 
 
 const STATUS = {
-  pago:     { bg: "#002a1a", text: "#00d68f", border: "#00d68f30", label: "Pago" },
-  atrasado: { bg: "#2a0a0a", text: "#ff5c5c", border: "#ff5c5c30", label: "Atrasado" },
+  ativo:    { bg: "#002a1a", text: "#00d68f", border: "#00d68f30", label: "Ativo" },
+  expirado: { bg: "#2a0a0a", text: "#ff5c5c", border: "#ff5c5c30", label: "Expirado" },
 };
+
+// Status simples baseado só no vencimento
+const getStatusSimples = (c) => diffDias(c.vencimento) >= 0 ? "ativo" : "expirado";
 
 const isDueToday = (c) => diffDias(c.vencimento) === 0;
 const isDueSoon  = (c) => { const d = diffDias(c.vencimento); return d > 0 && d <= 3; };
@@ -186,7 +216,9 @@ export default function App() {
   const [loading,       setLoading]       = useState(true);
   const [view,          setView]          = useState("dashboard");
   const [search,        setSearch]        = useState("");
-  const [filterStatus,  setFilterStatus]  = useState("todos");
+  const [filterStatus,    setFilterStatus]    = useState("todos");
+  const [filterCriteria,  setFilterCriteria]  = useState("status"); // "status" | "servidor"
+  const [filterServidor,  setFilterServidor]  = useState("todos");
   const [showForm,      setShowForm]      = useState(false);
   const [editingClient, setEditingClient] = useState(null);
   const [selectedId,    setSelectedId]    = useState(null);
@@ -224,24 +256,25 @@ export default function App() {
   const ativos        = clients.filter(c => c.ativo !== false);
   const dueToday      = ativos.filter(isDueToday);
   const dueSoon       = ativos.filter(isDueSoon);
-  const totalPago     = ativos.filter(c => getStatus(c) === "pago").length;
-  const totalAtrasado = ativos.filter(c => getStatus(c) === "atrasado").length;
+  const totalAtivo    = ativos.filter(c => getStatusSimples(c) === "ativo").length;
+  const totalExpirado = ativos.filter(c => getStatusSimples(c) === "expirado").length;
   const totalPendente = dueToday.length + dueSoon.length;
   const receitaTotal  = ativos.reduce((s, c) => s + valorMensal(Number(c.valor || 0), c.periodicidade), 0);
-  const receitaPaga   = ativos.filter(c => getStatus(c) === "pago").reduce((s, c) => s + valorMensal(Number(c.valor || 0), c.periodicidade), 0);
-  const alertCount    = dueToday.length + dueSoon.length + totalAtrasado;
+  const receitaPaga   = ativos.filter(c => getStatusSimples(c) === "ativo").reduce((s, c) => s + valorMensal(Number(c.valor || 0), c.periodicidade), 0);
+  const alertCount    = dueToday.length + dueSoon.length + totalExpirado;
 
   const filtered = clients
     .filter(c => {
       const ms = (c.nome + c.usuario + (c.servidorNome || "")).toLowerCase().includes(search.toLowerCase());
-      const fs = filterStatus === "todos" || getStatus(c) === filterStatus;
+      const fs = filterCriteria === "status"
+        ? filterStatus === "todos" || getStatusSimples(c) === filterStatus
+        : filterServidor === "todos" || c.servidorId === filterServidor;
       return ms && fs;
     })
     .sort((a, b) => {
-      // Atrasados primeiro, depois por vencimento mais próximo
-      const sa = getStatus(a), sb = getStatus(b);
-      if (sa === "atrasado" && sb !== "atrasado") return -1;
-      if (sb === "atrasado" && sa !== "atrasado") return 1;
+      const sa = getStatusSimples(a), sb = getStatusSimples(b);
+      if (sa === "expirado" && sb !== "expirado") return -1;
+      if (sb === "expirado" && sa !== "expirado") return 1;
       return new Date(a.vencimento) - new Date(b.vencimento);
     });
 
@@ -283,18 +316,28 @@ export default function App() {
     if (!payForm.valor || !payForm.data) return;
     setSaving(true);
     const c    = clients.find(x => x.id === payModal.id);
-    const novo = { valor: unMaskValor(payForm.valor), data: payForm.data, obs: payForm.obs };
+    const dias = perioDias(c.periodicidade || "mensal");
+
+    // Ciclo que este pagamento cobre
+    const cicloFim    = payForm.cicloFim    || c.vencimento;
+    const cicloInicio = payForm.cicloInicio || addDias(cicloFim, -dias);
+
+    const novo = {
+      valor: unMaskValor(payForm.valor),
+      data:  payForm.data,
+      obs:   payForm.obs,
+      cicloInicio,
+      cicloFim,
+    };
+
     let novoVenc = c.vencimento;
     let renovado = false;
 
     if (payForm.renovar) {
       const diff = diffDias(c.vencimento);
-      const dias = perioDias(c.periodicidade || "mensal");
       if (diff <= 0) {
-        // Atrasado ou no dia: conta da data do pagamento
         novoVenc = addDias(payForm.data, dias);
       } else {
-        // Antes do vencimento: conta do vencimento atual
         novoVenc = addDias(c.vencimento, dias);
       }
       renovado = true;
@@ -307,7 +350,7 @@ export default function App() {
     setSaving(false);
     setLastPay({ client: { ...c, vencimento: novoVenc }, pagamento: novo, renovado });
     setPayModal(null);
-    setPayForm({ valor: "", data: todayISO(), obs: "", renovar: false });
+    setPayForm({ valor: "", data: todayISO(), obs: "", renovar: false, cicloInicio: "", cicloFim: "" });
   };
 
   // Abre modal de renovação com data pré-calculada mas editável
@@ -337,7 +380,13 @@ export default function App() {
   const deleteClient = async (id) => { if (window.confirm("Remover cliente?")) await deleteDoc(doc(db, "clientes", id)); };
   const openPay = (c) => {
     setPayModal(c);
-    setPayForm({ valor: c.valor ? maskValor(String(Math.round(c.valor * 100))) : "", data: todayISO(), obs: "", renovar: false });
+    const dias        = perioDias(c.periodicidade || "mensal");
+    const cicloFim    = c.vencimento || todayISO();
+    const cicloInicio = addDias(cicloFim, -dias);
+    setPayForm({
+      valor: c.valor ? maskValor(String(Math.round(c.valor * 100))) : "",
+      data: todayISO(), obs: "", renovar: false, cicloInicio, cicloFim
+    });
   };
 
   // ── servidor CRUD ─────────────────────────────────────────
@@ -478,12 +527,12 @@ export default function App() {
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 20 }}>
               {[
-                { label: "Clientes ativos", value: ativos.length,     icon: "👥", color: C.blueLight },
-                { label: "Receita mensal",  value: fmt(receitaTotal), icon: "💰", color: C.success },
-                { label: "Recebido",        value: fmt(receitaPaga),  icon: "✅", color: C.success },
-                { label: "Em dia",          value: totalPago,         icon: "✔",  color: C.success },
-                { label: "Vencendo em breve", value: totalPendente,   icon: "⏳", color: C.warning },
-                { label: "Atrasados",       value: totalAtrasado,     icon: "⚠",  color: C.danger },
+                { label: "Clientes cadastrados", value: ativos.length,     icon: "👥", color: C.blueLight },
+                { label: "Receita mensal",        value: fmt(receitaTotal), icon: "💰", color: C.success },
+                { label: "Recebido",              value: fmt(receitaPaga),  icon: "✅", color: C.success },
+                { label: "Ativos",                value: totalAtivo,        icon: "✔",  color: C.success },
+                { label: "Vencendo em breve",     value: totalPendente,     icon: "⏳", color: C.warning },
+                { label: "Expirados",             value: totalExpirado,     icon: "⚠",  color: C.danger },
               ].map(card => (
                 <div key={card.label} style={{ ...S.card, padding: "14px 16px", borderTop: `3px solid ${card.color}` }}>
                   <div style={{ fontSize: 18, marginBottom: 8 }}>{card.icon}</div>
@@ -497,8 +546,8 @@ export default function App() {
             {(() => {
               const vencendoHoje   = ativos.filter(c => diffDias(c.vencimento) === 0);
               const vencendoAmanha = ativos.filter(c => diffDias(c.vencimento) === 1);
-              const atrasados      = ativos.filter(c => getStatus(c) === "atrasado");
-              const totalAlertas   = vencendoHoje.length + vencendoAmanha.length + atrasados.length;
+              const expirados      = ativos.filter(c => getStatusSimples(c) === "expirado");
+              const totalAlertas   = vencendoHoje.length + vencendoAmanha.length + expirados.length;
 
               if (totalAlertas === 0) return (
                 <div style={{ ...S.card, padding: "20px 16px", textAlign: "center" }}>
@@ -511,22 +560,22 @@ export default function App() {
               const lista = [
                 ...vencendoHoje.map(c   => ({ ...c, _tag: "hoje" })),
                 ...vencendoAmanha.map(c => ({ ...c, _tag: "amanha" })),
-                ...atrasados.map(c      => ({ ...c, _tag: "atrasado" })),
+                ...expirados.map(c      => ({ ...c, _tag: "expirado" })),
               ];
 
               return (
-                <div style={{ ...S.card, borderColor: atrasados.length > 0 ? `${C.danger}60` : `${C.warning}60`, overflow: "hidden" }}>
-                  <div style={{ background: atrasados.length > 0 ? `${C.danger}15` : `${C.warning}15`, padding: "14px 16px", borderBottom: `1px solid ${C.border2}` }}>
+                <div style={{ ...S.card, borderColor: expirados.length > 0 ? `${C.danger}60` : `${C.warning}60`, overflow: "hidden" }}>
+                  <div style={{ background: expirados.length > 0 ? `${C.danger}15` : `${C.warning}15`, padding: "14px 16px", borderBottom: `1px solid ${C.border2}` }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div>
-                        <div style={{ fontWeight: 700, fontSize: 14, color: atrasados.length > 0 ? C.danger : C.warning }}>
-                          {atrasados.length > 0 ? "⚠ Atenção necessária" : "🔔 Vencimentos próximos"}
+                        <div style={{ fontWeight: 700, fontSize: 14, color: expirados.length > 0 ? C.danger : C.warning }}>
+                          {expirados.length > 0 ? "⚠ Atenção necessária" : "🔔 Vencimentos próximos"}
                         </div>
                         <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>
                           {[
                             vencendoHoje.length   > 0 && `${vencendoHoje.length} vence(m) hoje`,
                             vencendoAmanha.length > 0 && `${vencendoAmanha.length} vence(m) amanhã`,
-                            atrasados.length      > 0 && `${atrasados.length} em atraso`,
+                            expirados.length      > 0 && `${expirados.length} expirado(s)`,
                           ].filter(Boolean).join(" · ")}
                         </div>
                       </div>
@@ -537,18 +586,17 @@ export default function App() {
                   </div>
                   <div style={{ padding: "10px 16px 14px" }}>
                     {lista.slice(0, 4).map(c => {
-                      const temPagamento = getPagamentoStatus(c) === "pago";
+                      const ultimoPgto = (c.pagamentos || []).slice(-1)[0];
                       return (
                         <div key={c.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border2}` }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <div style={{ width: 34, height: 34, borderRadius: "50%", background: `${C.blue}25`, border: `1px solid ${C.blue}40`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: C.white, fontSize: 14, flexShrink: 0 }}>{initial(c.nome)}</div>
                             <div>
                               <div style={{ fontWeight: 500, fontSize: 14 }}>{c.nome}</div>
-                              <div style={{ fontSize: 11, color: c._tag === "atrasado" ? C.danger : c._tag === "hoje" && temPagamento ? C.success : C.warning }}>
-                                {c._tag === "atrasado" ? `Em atraso desde ${ptDate(c.vencimento)}` :
-                                 c._tag === "hoje" && temPagamento  ? "Vence hoje — pagamento já realizado ✅" :
-                                 c._tag === "hoje" && !temPagamento ? "Vence hoje — pagamento pendente ⏳" :
-                                 "Vence amanhã"} · {fmt(c.valor)}
+                              <div style={{ fontSize: 11, color: c._tag === "expirado" ? C.danger : c._tag === "hoje" ? C.warning : C.textMuted }}>
+                                {c._tag === "expirado" ? `Expirado em ${ptDate(c.vencimento)}` :
+                                 c._tag === "hoje"     ? "Vence hoje" : "Vence amanhã"}
+                                {ultimoPgto ? ` · Último pgto: ${ptDate(ultimoPgto.data)}` : ""}
                               </div>
                             </div>
                           </div>
@@ -571,20 +619,63 @@ export default function App() {
         {view === "clientes" && (
           <div className="fin">
             <h2 style={{ fontSize: 19, fontWeight: 700, marginBottom: 16 }}>Clientes</h2>
-            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar cliente..." style={{ ...S.input, flex: 1 }} />
-              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ ...S.input, width: "auto", cursor: "pointer", paddingLeft: 10, paddingRight: 10 }}>
-                <option value="todos">Todos</option>
-                <option value="pago">Pagos</option>
-                <option value="atrasado">Atrasados</option>
-              </select>
+
+            {/* Busca */}
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar cliente..." style={{ ...S.input, marginBottom: 12 }} />
+
+            {/* Filtros em 2 etapas */}
+            <div style={{ marginBottom: 16 }}>
+              {/* Etapa 1 — critério */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                {[
+                  { key: "status",    label: "Status" },
+                  { key: "servidor",  label: "Servidor" },
+                ].map(cr => (
+                  <button key={cr.key} onClick={() => { setFilterCriteria(cr.key); setFilterStatus("todos"); setFilterServidor("todos"); }}
+                    style={{ padding: "7px 16px", borderRadius: 8, border: `1px solid ${filterCriteria === cr.key ? C.blue : C.border2}`, background: filterCriteria === cr.key ? `${C.blue}25` : C.bgCard2, color: filterCriteria === cr.key ? C.blueLight : C.textMuted, fontSize: 13, fontWeight: filterCriteria === cr.key ? 600 : 400, cursor: "pointer", fontFamily: "'Roboto',sans-serif" }}>
+                    {cr.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Etapa 2 — opções do critério */}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {filterCriteria === "status" && (
+                  <>
+                    {[
+                      { key: "todos",    label: "Todos" },
+                      { key: "ativo",    label: "Ativos" },
+                      { key: "expirado", label: "Expirados" },
+                    ].map(op => (
+                      <button key={op.key} onClick={() => setFilterStatus(op.key)}
+                        style={{ padding: "6px 14px", borderRadius: 20, border: `1px solid ${filterStatus === op.key ? C.blue : C.border2}`, background: filterStatus === op.key ? C.blue : C.bgCard2, color: filterStatus === op.key ? "#fff" : C.textMuted, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "'Roboto',sans-serif" }}>
+                        {op.label}
+                      </button>
+                    ))}
+                  </>
+                )}
+                {filterCriteria === "servidor" && (
+                  <>
+                    <button onClick={() => setFilterServidor("todos")}
+                      style={{ padding: "6px 14px", borderRadius: 20, border: `1px solid ${filterServidor === "todos" ? C.blue : C.border2}`, background: filterServidor === "todos" ? C.blue : C.bgCard2, color: filterServidor === "todos" ? "#fff" : C.textMuted, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "'Roboto',sans-serif" }}>
+                      Todos
+                    </button>
+                    {servidores.map(s => (
+                      <button key={s.id} onClick={() => setFilterServidor(s.id)}
+                        style={{ padding: "6px 14px", borderRadius: 20, border: `1px solid ${filterServidor === s.id ? C.blue : C.border2}`, background: filterServidor === s.id ? C.blue : C.bgCard2, color: filterServidor === s.id ? "#fff" : C.textMuted, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "'Roboto',sans-serif" }}>
+                        {s.nome}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
             </div>
 
             {filtered.length === 0 && <div style={{ color: C.textDim, padding: "30px 0", textAlign: "center" }}>Nenhum cliente encontrado</div>}
 
             {filtered.map(c => {
-              const st   = getStatus(c);
-              const sc   = STATUS[st] || STATUS.atrasado;
+              const st   = getStatusSimples(c);
+              const sc   = STATUS[st] || STATUS.ativo;
               const last = (c.pagamentos || []).slice(-1)[0];
               const exp  = selectedId === c.id;
               return (
@@ -599,7 +690,7 @@ export default function App() {
                         </div>
                         <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>@{c.usuario} · Vence {ptDate(c.vencimento)} · {fmt(c.valor)}</div>
                         {c.servidorNome && <div style={{ fontSize: 11, color: C.textDim, marginTop: 1 }}>{c.servidorNome}{c.planoNome ? ` · ${c.planoNome}` : ""}</div>}
-                        {last && <div style={{ fontSize: 11, color: C.success, marginTop: 2 }}>Ult. pgto: {fmt(last.valor)} em {ptDate(last.data)}</div>}
+                        {last && <div style={{ fontSize: 11, color: C.textDim, marginTop: 1 }}>Último pagamento: {ptDate(last.data)}</div>}
                       </div>
                       <div style={{ color: C.textDim, fontSize: 14, flexShrink: 0 }}>{exp ? "▲" : "▼"}</div>
                     </div>
@@ -726,11 +817,16 @@ export default function App() {
                         ? <div style={{ color: C.textDim, fontSize: 13 }}>Nenhum pagamento registrado</div>
                         : [...(c.pagamentos || [])].reverse().map((p, i) => (
                           <div key={i} style={{ background: C.bgCard2, borderRadius: 8, padding: "10px 12px", marginBottom: 6, border: `1px solid ${C.border2}` }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: p.obs ? 6 : 0 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: p.cicloInicio ? 4 : 0 }}>
                               <span style={{ fontWeight: 700, color: C.success, fontSize: 15 }}>{fmt(p.valor)}</span>
                               <span style={{ fontSize: 12, color: C.textMuted }}>{ptDate(p.data)}</span>
                             </div>
-                            {p.obs && <div style={{ fontSize: 12, color: C.textMuted }}>{p.obs}</div>}
+                            {p.cicloInicio && p.cicloFim && (
+                              <div style={{ fontSize: 11, color: C.blueLight, marginTop: 3 }}>
+                                Cobre: {ptDate(p.cicloInicio)} → {ptDate(p.cicloFim)}
+                              </div>
+                            )}
+                            {p.obs && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>{p.obs}</div>}
                           </div>
                         ))
                       }
@@ -751,38 +847,28 @@ export default function App() {
               { title: "Vence hoje",       color: C.warning,   border: `${C.warning}40`, list: ativos.filter(c => diffDias(c.vencimento) === 0) },
               { title: "Vence amanhã",     color: C.blueLight, border: `${C.blue}50`,    list: ativos.filter(c => diffDias(c.vencimento) === 1) },
               { title: "Próximos 5 dias",  color: C.textMuted, border: C.border,         list: ativos.filter(c => { const d = diffDias(c.vencimento); return d >= 2 && d <= 5; }) },
-              { title: "Atrasados",        color: C.danger,    border: `${C.danger}40`,  list: ativos.filter(c => getStatus(c) === "atrasado") },
+              { title: "Expirados",        color: C.danger,    border: `${C.danger}40`,  list: ativos.filter(c => getStatusSimples(c) === "expirado") },
             ].map(group => group.list.length > 0 && (
               <div key={group.title} style={{ marginBottom: 22 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: group.color, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>{group.title} ({group.list.length})</div>
                 {group.list.map(c => {
-                  const temPagamento = getPagamentoStatus(c) === "pago";
-                  const venceHoje    = diffDias(c.vencimento) === 0;
+                  const ultimoPgto = (c.pagamentos || []).slice(-1)[0];
                   return (
                     <div key={c.id} style={{ ...S.card, borderColor: group.border, padding: "14px 16px", marginBottom: 8 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                         <div style={{ width: 40, height: 40, borderRadius: "50%", background: `${C.blue}25`, border: `1px solid ${C.blue}40`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: C.white, fontSize: 16, flexShrink: 0 }}>{initial(c.nome)}</div>
                         <div style={{ flex: 1 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                            <div style={{ fontWeight: 500 }}>{c.nome}</div>
-                            <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20,
-                              background: temPagamento ? `${C.success}20` : `${C.warning}20`,
-                              color: temPagamento ? C.success : C.warning, flexShrink: 0
-                            }}>
-                              {temPagamento ? "Pago ✓" : "Pendente"}
-                            </span>
+                          <div style={{ fontWeight: 500 }}>{c.nome}</div>
+                          <div style={{ fontSize: 12, color: C.textMuted }}>Vence {ptDate(c.vencimento)} · {fmt(c.valor)}</div>
+                          <div style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>
+                            {ultimoPgto
+                              ? `Último pagamento: ${ptDate(ultimoPgto.data)}`
+                              : "Nenhum pagamento registrado"}
                           </div>
-                          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>@{c.usuario} · Vence {ptDate(c.vencimento)} · {fmt(c.valor)}</div>
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: 8 }}>
-                        {venceHoje && temPagamento ? (
-                          <button onClick={() => confirmarRenovacao(c)} style={{ ...S.btnPri, flex: 1, padding: "10px", fontSize: 13, background: `linear-gradient(135deg,${C.success},#059669)` }}>
-                            ✓ Confirmar renovação
-                          </button>
-                        ) : (
-                          <button onClick={() => openPay(c)} style={{ ...S.btnPri, flex: 1, padding: "10px", fontSize: 13 }}>Registrar pagamento</button>
-                        )}
+                        <button onClick={() => openPay(c)} style={{ ...S.btnPri, flex: 1, padding: "10px", fontSize: 13 }}>Registrar pagamento</button>
                         <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, flex: 1, padding: "10px", fontSize: 13 }}>Enviar cobrança</button>
                       </div>
                     </div>
@@ -1059,6 +1145,7 @@ export default function App() {
         <BottomSheet onClose={() => setPayModal(null)}>
           <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>Registrar pagamento</h3>
           <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 18 }}>{payModal.nome}</div>
+
           <div style={{ marginBottom: 12 }}>
             <Label>Valor recebido *</Label>
             <input inputMode="numeric" value={payForm.valor}
@@ -1072,6 +1159,26 @@ export default function App() {
           <div style={{ marginBottom: 16 }}>
             <Label>Observação (opcional)</Label>
             <input value={payForm.obs} onChange={e => setPayForm(p => ({ ...p, obs: e.target.value }))} placeholder="Ex: Pix, boleto..." style={S.input} />
+          </div>
+
+          {/* Ciclo do pagamento */}
+          <div style={{ background: C.bgCard2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px", marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: C.blueLight, fontWeight: 600, marginBottom: 10 }}>📅 Ciclo que este pagamento cobre</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+              <div style={{ flex: 1 }}>
+                <Label>De</Label>
+                <input type="date" value={payForm.cicloInicio}
+                  onChange={e => setPayForm(p => ({ ...p, cicloInicio: e.target.value }))}
+                  style={{ ...S.input, fontSize: 13 }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <Label>Até</Label>
+                <input type="date" value={payForm.cicloFim}
+                  onChange={e => setPayForm(p => ({ ...p, cicloFim: e.target.value }))}
+                  style={{ ...S.input, fontSize: 13 }} />
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: C.textDim }}>Preenchido automaticamente. Ajuste se necessário.</div>
           </div>
 
           {/* Checkbox renovar */}
