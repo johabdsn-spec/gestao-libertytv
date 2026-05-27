@@ -217,8 +217,9 @@ export default function App() {
   const [view,          setView]          = useState("dashboard");
   const [search,        setSearch]        = useState("");
   const [filterStatus,    setFilterStatus]    = useState("todos");
-  const [filterCriteria,  setFilterCriteria]  = useState("status"); // "status" | "servidor"
+  const [filterCriteria,  setFilterCriteria]  = useState("status");
   const [filterServidor,  setFilterServidor]  = useState("todos");
+  const [sortOrder,       setSortOrder]       = useState("vencimento");
   const [showForm,      setShowForm]      = useState(false);
   const [editingClient, setEditingClient] = useState(null);
   const [selectedId,    setSelectedId]    = useState(null);
@@ -272,6 +273,7 @@ export default function App() {
       return ms && fs;
     })
     .sort((a, b) => {
+      if (sortOrder === "alfabetico") return a.nome.localeCompare(b.nome, "pt-BR");
       const sa = getStatusSimples(a), sb = getStatusSimples(b);
       if (sa === "expirado" && sb !== "expirado") return -1;
       if (sb === "expirado" && sa !== "expirado") return 1;
@@ -670,6 +672,20 @@ export default function App() {
                 )}
               </div>
             </div>
+
+              {/* Ordenação */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                <span style={{ fontSize: 11, color: C.textDim, textTransform: "uppercase", letterSpacing: 1 }}>Ordenar:</span>
+                {[
+                  { key: "vencimento", label: "Por vencimento" },
+                  { key: "alfabetico", label: "A → Z" },
+                ].map(op => (
+                  <button key={op.key} onClick={() => setSortOrder(op.key)}
+                    style={{ padding: "6px 14px", borderRadius: 20, border: `1px solid ${sortOrder === op.key ? C.blue : C.border2}`, background: sortOrder === op.key ? C.blue : C.bgCard2, color: sortOrder === op.key ? "#fff" : C.textMuted, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "'Roboto',sans-serif" }}>
+                    {op.label}
+                  </button>
+                ))}
+              </div>
 
             {filtered.length === 0 && <div style={{ color: C.textDim, padding: "30px 0", textAlign: "center" }}>Nenhum cliente encontrado</div>}
 
@@ -1159,26 +1175,6 @@ export default function App() {
           <div style={{ marginBottom: 16 }}>
             <Label>Observação (opcional)</Label>
             <input value={payForm.obs} onChange={e => setPayForm(p => ({ ...p, obs: e.target.value }))} placeholder="Ex: Pix, boleto..." style={S.input} />
-          </div>
-
-          {/* Ciclo do pagamento */}
-          <div style={{ background: C.bgCard2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px", marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: C.blueLight, fontWeight: 600, marginBottom: 10 }}>📅 Ciclo que este pagamento cobre</div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-              <div style={{ flex: 1 }}>
-                <Label>De</Label>
-                <input type="date" value={payForm.cicloInicio}
-                  onChange={e => setPayForm(p => ({ ...p, cicloInicio: e.target.value }))}
-                  style={{ ...S.input, fontSize: 13 }} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <Label>Até</Label>
-                <input type="date" value={payForm.cicloFim}
-                  onChange={e => setPayForm(p => ({ ...p, cicloFim: e.target.value }))}
-                  style={{ ...S.input, fontSize: 13 }} />
-              </div>
-            </div>
-            <div style={{ fontSize: 11, color: C.textDim }}>Preenchido automaticamente. Ajuste se necessário.</div>
           </div>
 
           {/* Checkbox renovar */}
