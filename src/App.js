@@ -573,35 +573,31 @@ export default function App() {
             </div>
 
             {/* Seção Clientes */}
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.textDim, marginBottom: 10, textTransform: "uppercase", letterSpacing: 1.5 }}>👥 Clientes</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 24 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.textDim, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1.5 }}>👥 Clientes</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 16 }}>
               {[
-                { label: "Cadastrados",      value: ativos.length,  icon: "👥", color: C.blueLight },
-                { label: "Ativos",           value: totalAtivo,     icon: "✔",  color: C.success },
-                { label: "Expirados",        value: totalExpirado,  icon: "⚠",  color: C.danger },
-                { label: "Vence em breve",   value: totalPendente,  icon: "⏳", color: C.warning },
+                { label: "Total",    value: ativos.length,  color: C.blueLight },
+                { label: "Ativos",   value: totalAtivo,     color: C.success },
+                { label: "Expirados",value: totalExpirado,  color: C.danger },
               ].map(card => (
-                <div key={card.label} style={{ ...S.card, padding: "14px 16px", borderTop: `3px solid ${card.color}` }}>
-                  <div style={{ fontSize: 18, marginBottom: 8 }}>{card.icon}</div>
-                  <div style={{ fontSize: 20, fontWeight: 900, color: card.color }}>{card.value}</div>
-                  <div style={{ fontSize: 11, color: C.textDim, marginTop: 3 }}>{card.label}</div>
+                <div key={card.label} style={{ ...S.card, padding: "10px 12px", borderLeft: `3px solid ${card.color}` }}>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: card.color, lineHeight: 1 }}>{card.value}</div>
+                  <div style={{ fontSize: 10, color: C.textDim, marginTop: 4 }}>{card.label}</div>
                 </div>
               ))}
             </div>
 
             {/* Seção Financeiro */}
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.textDim, marginBottom: 10, textTransform: "uppercase", letterSpacing: 1.5 }}>💰 Financeiro — {new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 24 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.textDim, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1.5 }}>💰 Financeiro — {new Date().toLocaleDateString("pt-BR", { month: "short", year: "numeric" })}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 18 }}>
               {[
-                { label: "Receita esperada", value: fmt(receitaTotal),   icon: "📈", color: C.blueLight },
-                { label: "Recebido no mês",  value: fmt(recebidoMes),    icon: "✅", color: C.success },
-                { label: "Despesas",         value: fmt(totalDespesas),  icon: "📉", color: C.warning },
-                { label: "Saldo do mês",     value: fmt(saldoMes),       icon: saldoMes >= 0 ? "💵" : "⚠", color: saldoMes >= 0 ? C.success : C.danger },
+                { label: "Recebido",  value: fmt(recebidoMes),   color: C.success },
+                { label: "Despesas",  value: fmt(totalDespesas), color: C.warning },
+                { label: "Saldo",     value: fmt(saldoMes),      color: saldoMes >= 0 ? C.success : C.danger },
               ].map(card => (
-                <div key={card.label} style={{ ...S.card, padding: "14px 16px", borderTop: `3px solid ${card.color}` }}>
-                  <div style={{ fontSize: 18, marginBottom: 8 }}>{card.icon}</div>
-                  <div style={{ fontSize: 20, fontWeight: 900, color: card.color }}>{card.value}</div>
-                  <div style={{ fontSize: 11, color: C.textDim, marginTop: 3 }}>{card.label}</div>
+                <div key={card.label} style={{ ...S.card, padding: "10px 12px", borderLeft: `3px solid ${card.color}` }}>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: card.color, lineHeight: 1 }}>{card.value}</div>
+                  <div style={{ fontSize: 10, color: C.textDim, marginTop: 4 }}>{card.label}</div>
                 </div>
               ))}
             </div>
