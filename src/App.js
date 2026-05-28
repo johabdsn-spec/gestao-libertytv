@@ -213,6 +213,7 @@ const BottomSheet = ({ children, onClose }) => (
 export default function App() {
   const [clients,       setClients]       = useState([]);
   const [servidores,    setServidores]    = useState([]);
+  const [despesas,      setDespesas]      = useState([]);
   const [loading,       setLoading]       = useState(true);
   const [view,          setView]          = useState("dashboard");
   const [search,        setSearch]        = useState("");
@@ -235,7 +236,9 @@ export default function App() {
   const [editingServ,   setEditingServ]   = useState(null);
   const [servForm,      setServForm]      = useState({ nome: "", creditoValor: "", planos: [] });
   const [newPlano,      setNewPlano]      = useState({ nome: "", valor: "", periodicidade: "mensal" });
-  const [renovModal,    setRenovModal]    = useState(null); // { client, novoVenc }
+  const [renovModal,    setRenovModal]    = useState(null);
+  const [showDespForm,  setShowDespForm]  = useState(false);
+  const [despForm,      setDespForm]      = useState({ nome: "", valor: "", tipo: "fixa", mes: "" }); // { client, novoVenc }
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.innerWidth < 640 : true);
   useEffect(() => {
@@ -248,12 +251,16 @@ export default function App() {
   useEffect(() => {
     const q1 = query(collection(db, "clientes"),   orderBy("nome"));
     const q2 = query(collection(db, "servidores"), orderBy("nome"));
+    const q3 = query(collection(db, "despesas"),   orderBy("criadoEm"));
     const u1 = onSnapshot(q1, s => { setClients(s.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); });
     const u2 = onSnapshot(q2, s => setServidores(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-    return () => { u1(); u2(); };
+    const u3 = onSnapshot(q3, s => setDespesas(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    return () => { u1(); u2(); u3(); };
   }, []);
 
   // ── computed ──────────────────────────────────────────────
+  const mesAtual = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; };
+
   const ativos        = clients.filter(c => c.ativo !== false);
   const dueToday      = ativos.filter(isDueToday);
   const dueSoon       = ativos.filter(isDueSoon);
@@ -261,8 +268,27 @@ export default function App() {
   const totalExpirado = ativos.filter(c => getStatusSimples(c) === "expirado").length;
   const totalPendente = dueToday.length + dueSoon.length;
   const receitaTotal  = ativos.reduce((s, c) => s + valorMensal(Number(c.valor || 0), c.periodicidade), 0);
-  const receitaPaga   = ativos.filter(c => getStatusSimples(c) === "ativo").reduce((s, c) => s + valorMensal(Number(c.valor || 0), c.periodicidade), 0);
   const alertCount    = dueToday.length + dueSoon.length + totalExpirado;
+
+  // Recebido no mês = pagamentos registrados neste mês
+  const mes = mesAtual();
+  const recebidoMes = ativos.reduce((sum, c) => {
+    const pags = (c.pagamentos || []).filter(p => p.data && p.data.startsWith(mes));
+    return sum + pags.reduce((s, p) => s + Number(p.valor || 0), 0);
+  }, 0);
+
+  // Despesas do mês
+  const despesasFixasMes  = despesas.filter(d => d.tipo === "fixa").reduce((s, d) => s + Number(d.valor || 0), 0);
+  const despesasAvulsasMes = despesas.filter(d => d.tipo === "avulsa" && d.mes === mes).reduce((s, d) => s + Number(d.valor || 0), 0);
+  // Créditos: custo do servidor × clientes que renovaram no mês
+  const creditosMes = ativos.reduce((sum, c) => {
+    const renovou = (c.pagamentos || []).some(p => p.data && p.data.startsWith(mes) && p.renovar !== false);
+    if (!renovou) return sum;
+    const serv = servidores.find(s => s.id === c.servidorId);
+    return sum + Number(serv?.creditoValor || 0);
+  }, 0);
+  const totalDespesas = despesasFixasMes + despesasAvulsasMes + creditosMes;
+  const saldoMes      = recebidoMes - totalDespesas;
 
   const filtered = clients
     .filter(c => {
@@ -451,10 +477,29 @@ export default function App() {
 
 
 
+  const saveDespesa = async () => {
+    if (!despForm.nome || !despForm.valor) return;
+    setSaving(true);
+    await addDoc(collection(db, "despesas"), {
+      ...despForm,
+      valor: unMaskValor(despForm.valor),
+      mes: despForm.tipo === "avulsa" ? despForm.mes || mesAtual() : "",
+      criadoEm: todayISO(),
+    });
+    setSaving(false);
+    setShowDespForm(false);
+    setDespForm({ nome: "", valor: "", tipo: "fixa", mes: "" });
+  };
+
+  const deleteDespesa = async (id) => {
+    if (window.confirm("Remover despesa?")) await deleteDoc(doc(db, "despesas", id));
+  };
+
   const navItems = [
     { key: "dashboard",  icon: "📊", label: "Dashboard" },
     { key: "clientes",   icon: "👥", label: "Clientes" },
     { key: "alertas",    icon: "🔔", label: `Alertas${alertCount > 0 ? ` (${alertCount})` : ""}` },
+    { key: "financeiro", icon: "💰", label: "Financeiro" },
     { key: "servidores", icon: "🖥️", label: "Servidores" },
   ];
 
@@ -527,14 +572,31 @@ export default function App() {
               <span style={{ fontSize: 11, color: C.textMuted }}>{new Date().toLocaleDateString("pt-BR", { day: "numeric", month: "short", year: "numeric" })}</span>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 20 }}>
+            {/* Seção Clientes */}
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.textDim, marginBottom: 10, textTransform: "uppercase", letterSpacing: 1.5 }}>👥 Clientes</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 24 }}>
               {[
-                { label: "Clientes cadastrados", value: ativos.length,     icon: "👥", color: C.blueLight },
-                { label: "Receita mensal",        value: fmt(receitaTotal), icon: "💰", color: C.success },
-                { label: "Recebido",              value: fmt(receitaPaga),  icon: "✅", color: C.success },
-                { label: "Ativos",                value: totalAtivo,        icon: "✔",  color: C.success },
-                { label: "Vencendo em breve",     value: totalPendente,     icon: "⏳", color: C.warning },
-                { label: "Expirados",             value: totalExpirado,     icon: "⚠",  color: C.danger },
+                { label: "Cadastrados",      value: ativos.length,  icon: "👥", color: C.blueLight },
+                { label: "Ativos",           value: totalAtivo,     icon: "✔",  color: C.success },
+                { label: "Expirados",        value: totalExpirado,  icon: "⚠",  color: C.danger },
+                { label: "Vence em breve",   value: totalPendente,  icon: "⏳", color: C.warning },
+              ].map(card => (
+                <div key={card.label} style={{ ...S.card, padding: "14px 16px", borderTop: `3px solid ${card.color}` }}>
+                  <div style={{ fontSize: 18, marginBottom: 8 }}>{card.icon}</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: card.color }}>{card.value}</div>
+                  <div style={{ fontSize: 11, color: C.textDim, marginTop: 3 }}>{card.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Seção Financeiro */}
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.textDim, marginBottom: 10, textTransform: "uppercase", letterSpacing: 1.5 }}>💰 Financeiro — {new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 24 }}>
+              {[
+                { label: "Receita esperada", value: fmt(receitaTotal),   icon: "📈", color: C.blueLight },
+                { label: "Recebido no mês",  value: fmt(recebidoMes),    icon: "✅", color: C.success },
+                { label: "Despesas",         value: fmt(totalDespesas),  icon: "📉", color: C.warning },
+                { label: "Saldo do mês",     value: fmt(saldoMes),       icon: saldoMes >= 0 ? "💵" : "⚠", color: saldoMes >= 0 ? C.success : C.danger },
               ].map(card => (
                 <div key={card.label} style={{ ...S.card, padding: "14px 16px", borderTop: `3px solid ${card.color}` }}>
                   <div style={{ fontSize: 18, marginBottom: 8 }}>{card.icon}</div>
@@ -901,6 +963,82 @@ export default function App() {
           </div>
         )}
 
+        {/* ══ FINANCEIRO ══ */}
+        {view === "financeiro" && (
+          <div className="fin">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ fontSize: 19, fontWeight: 700 }}>Financeiro</h2>
+              <button onClick={() => { setDespForm({ nome: "", valor: "", tipo: "fixa", mes: mesAtual() }); setShowDespForm(true); }} style={S.btnPri}>+ Despesa</button>
+            </div>
+
+            {/* Resumo do mês */}
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.textDim, marginBottom: 10, textTransform: "uppercase", letterSpacing: 1.5 }}>
+              Resumo — {new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 24 }}>
+              {[
+                { label: "Recebido no mês", value: fmt(recebidoMes),   color: C.success, icon: "✅" },
+                { label: "Créditos",        value: fmt(creditosMes),   color: C.warning, icon: "🖥️" },
+                { label: "Despesas fixas",  value: fmt(despesasFixasMes),  color: C.warning, icon: "📋" },
+                { label: "Avulsas",         value: fmt(despesasAvulsasMes), color: C.warning, icon: "📌" },
+              ].map(card => (
+                <div key={card.label} style={{ ...S.card, padding: "14px 16px", borderTop: `3px solid ${card.color}` }}>
+                  <div style={{ fontSize: 18, marginBottom: 8 }}>{card.icon}</div>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: card.color }}>{card.value}</div>
+                  <div style={{ fontSize: 11, color: C.textDim, marginTop: 3 }}>{card.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Saldo destaque */}
+            <div style={{ ...S.card, padding: "18px", marginBottom: 24, borderColor: saldoMes >= 0 ? `${C.success}60` : `${C.danger}60`, background: saldoMes >= 0 ? `${C.success}10` : `${C.danger}10`, textAlign: "center" }}>
+              <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 6 }}>Saldo do mês</div>
+              <div style={{ fontSize: 32, fontWeight: 900, color: saldoMes >= 0 ? C.success : C.danger }}>{fmt(saldoMes)}</div>
+              <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>Recebido ({fmt(recebidoMes)}) − Despesas ({fmt(totalDespesas)})</div>
+            </div>
+
+            {/* Despesas fixas */}
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.textDim, marginBottom: 10, textTransform: "uppercase", letterSpacing: 1.5 }}>Despesas fixas</div>
+            {despesas.filter(d => d.tipo === "fixa").length === 0
+              ? <div style={{ color: C.textDim, fontSize: 13, marginBottom: 16 }}>Nenhuma despesa fixa cadastrada</div>
+              : despesas.filter(d => d.tipo === "fixa").map(d => (
+                <div key={d.id} style={{ ...S.card, padding: "12px 16px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontWeight: 500, fontSize: 14 }}>{d.nome}</div>
+                    <div style={{ fontSize: 12, color: C.textMuted }}>Mensal</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontWeight: 700, color: C.warning }}>{fmt(d.valor)}</span>
+                    <button onClick={() => deleteDespesa(d.id)} style={{ ...S.btnSm, padding: "5px 8px", borderColor: `${C.danger}40` }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.danger} strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                    </button>
+                  </div>
+                </div>
+              ))
+            }
+
+            {/* Despesas avulsas do mês */}
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.textDim, marginBottom: 10, marginTop: 16, textTransform: "uppercase", letterSpacing: 1.5 }}>Despesas avulsas — {new Date().toLocaleDateString("pt-BR", { month: "long" })}</div>
+            {despesas.filter(d => d.tipo === "avulsa" && d.mes === mes).length === 0
+              ? <div style={{ color: C.textDim, fontSize: 13 }}>Nenhuma despesa avulsa este mês</div>
+              : despesas.filter(d => d.tipo === "avulsa" && d.mes === mes).map(d => (
+                <div key={d.id} style={{ ...S.card, padding: "12px 16px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontWeight: 500, fontSize: 14 }}>{d.nome}</div>
+                    {d.obs && <div style={{ fontSize: 12, color: C.textMuted }}>{d.obs}</div>}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontWeight: 700, color: C.warning }}>{fmt(d.valor)}</span>
+                    <button onClick={() => deleteDespesa(d.id)} style={{ ...S.btnSm, padding: "5px 8px", borderColor: `${C.danger}40` }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.danger} strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                    </button>
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+        )}
+
         {/* ══ SERVIDORES ══ */}
         {view === "servidores" && (
           <div className="fin">
@@ -1230,7 +1368,55 @@ export default function App() {
           </div>
         </BottomSheet>
       )}
-      {/* ══ MODAL RENOVAÇÃO ══ */}
+      {/* ══ MODAL DESPESA ══ */}
+      {showDespForm && (
+        <BottomSheet onClose={() => setShowDespForm(false)}>
+          <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 20 }}>Nova despesa</h3>
+
+          <div style={{ marginBottom: 12 }}>
+            <Label>Nome *</Label>
+            <input value={despForm.nome} onChange={e => setDespForm(p => ({ ...p, nome: e.target.value }))} placeholder="Ex: Assinatura app gestão" style={S.input} />
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <Label>Valor *</Label>
+            <input inputMode="numeric" value={despForm.valor}
+              onChange={e => setDespForm(p => ({ ...p, valor: maskValor(e.target.value) }))}
+              placeholder="R$ 0,00" style={S.input} />
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <Label>Tipo</Label>
+            <div style={{ display: "flex", gap: 8 }}>
+              {[{ key: "fixa", label: "Fixa (todo mês)" }, { key: "avulsa", label: "Avulsa (mês específico)" }].map(t => (
+                <button key={t.key} onClick={() => setDespForm(p => ({ ...p, tipo: t.key }))}
+                  style={{ flex: 1, padding: "10px", borderRadius: 8, border: `1px solid ${despForm.tipo === t.key ? C.blue : C.border}`, background: despForm.tipo === t.key ? `${C.blue}25` : C.bgCard2, color: despForm.tipo === t.key ? C.blueLight : C.textMuted, fontSize: 13, cursor: "pointer", fontFamily: "'Roboto',sans-serif" }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {despForm.tipo === "avulsa" && (
+            <div style={{ marginBottom: 12 }}>
+              <Label>Mês de referência</Label>
+              <input type="month" value={despForm.mes}
+                onChange={e => setDespForm(p => ({ ...p, mes: e.target.value }))}
+                style={S.input} />
+            </div>
+          )}
+
+          <div style={{ marginBottom: 12 }}>
+            <Label>Observação (opcional)</Label>
+            <input value={despForm.obs || ""} onChange={e => setDespForm(p => ({ ...p, obs: e.target.value }))} placeholder="Ex: App cliente João" style={S.input} />
+          </div>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+            <button onClick={() => setShowDespForm(false)} style={{ ...S.btnSec, flex: 1 }}>Cancelar</button>
+            <button onClick={saveDespesa} disabled={saving} style={{ ...S.btnPri, flex: 1 }}>{saving ? "Salvando..." : "Salvar"}</button>
+          </div>
+        </BottomSheet>
+      )}
       {renovModal && (
         <div style={S.overlay}>
           <div style={{
