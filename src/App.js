@@ -363,7 +363,10 @@ export default function App() {
 
     if (payForm.renovar) {
       const diff = diffDias(c.vencimento);
-      if (diff <= 0) {
+      // Usa data editada pelo usuário se disponível
+      if (payForm.novoVenc) {
+        novoVenc = payForm.novoVenc;
+      } else if (diff <= 0) {
         novoVenc = addDias(payForm.data, dias);
       } else {
         novoVenc = addDias(c.vencimento, dias);
@@ -413,7 +416,7 @@ export default function App() {
     const cicloInicio = addDias(cicloFim, -dias);
     setPayForm({
       valor: c.valor ? maskValor(String(Math.round(c.valor * 100))) : "",
-      data: todayISO(), obs: "", renovar: false, cicloInicio, cicloFim
+      data: todayISO(), obs: "", renovar: false, novoVenc: "", cicloInicio, cicloFim
     });
   };
 
@@ -591,12 +594,12 @@ export default function App() {
             <div style={{ fontSize: 10, fontWeight: 700, color: C.textDim, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1.5 }}>💰 Financeiro — {new Date().toLocaleDateString("pt-BR", { month: "short", year: "numeric" })}</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 18 }}>
               {[
+                { label: "Saldo",    value: fmt(saldoMes),      color: C.blueLight },
                 { label: "Recebido", value: fmt(recebidoMes),   color: C.success },
-                { label: "Despesas", value: fmt(totalDespesas), color: C.warning },
-                { label: "Saldo",    value: fmt(saldoMes),      color: saldoMes >= 0 ? C.success : C.danger },
+                { label: "Despesas", value: fmt(totalDespesas), color: C.danger },
               ].map(card => (
                 <div key={card.label} style={{ ...S.card, padding: "14px 12px", borderLeft: `3px solid ${card.color}` }}>
-                  <div style={{ fontSize: 14, fontWeight: 900, color: card.color, lineHeight: 1 }}>{card.value}</div>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: card.color, lineHeight: 1, fontSize: "clamp(12px, 3.5vw, 20px)" }}>{card.value}</div>
                   <div style={{ fontSize: 11, color: C.textDim, marginTop: 6 }}>{card.label}</div>
                 </div>
               ))}
@@ -1313,20 +1316,37 @@ export default function App() {
           </div>
 
           {/* Checkbox renovar */}
-          <div onClick={() => setPayForm(p => ({ ...p, renovar: !p.renovar }))}
-            style={{ display: "flex", alignItems: "center", gap: 12, background: payForm.renovar ? `${C.success}18` : C.bgCard2, border: `1px solid ${payForm.renovar ? C.success + "60" : C.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 20, cursor: "pointer", transition: "all .2s" }}>
+          <div onClick={() => {
+            const c = clients.find(x => x.id === payModal.id);
+            const dias = perioDias(c?.periodicidade || "mensal");
+            const diff = diffDias(c?.vencimento);
+            const novoVenc = diff <= 0 ? addDias(payForm.data, dias) : addDias(c?.vencimento, dias);
+            setPayForm(p => ({ ...p, renovar: !p.renovar, novoVenc: !p.renovar ? novoVenc : "" }));
+          }}
+            style={{ display: "flex", alignItems: "center", gap: 12, background: payForm.renovar ? `${C.success}18` : C.bgCard2, border: `1px solid ${payForm.renovar ? C.success + "60" : C.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: payForm.renovar ? 12 : 20, cursor: "pointer", transition: "all .2s" }}>
             <div style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${payForm.renovar ? C.success : C.border}`, background: payForm.renovar ? C.success : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all .2s" }}>
               {payForm.renovar && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
             </div>
             <div>
               <div style={{ fontSize: 14, fontWeight: 600, color: payForm.renovar ? C.success : C.textLight }}>Renovar acesso</div>
               <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
-                {payForm.renovar
-                  ? `Próx. vencimento: ${ptDate((() => { const c = clients.find(x => x.id === payModal.id); const diff = diffDias(c?.vencimento); const dias = perioDias(c?.periodicidade || "mensal"); return diff <= 0 ? addDias(payForm.data, dias) : addDias(c?.vencimento, dias); })())}`
-                  : "Marque para renovar o vencimento junto com o pagamento"}
+                {payForm.renovar ? "Novo vencimento calculado abaixo" : "Marque para renovar junto com o pagamento"}
               </div>
             </div>
           </div>
+
+          {/* Campo de data do novo vencimento — aparece quando renovar está marcado */}
+          {payForm.renovar && (
+            <div style={{ marginBottom: 20 }}>
+              <Label>Novo vencimento</Label>
+              <input type="date" value={payForm.novoVenc || ""}
+                onChange={e => setPayForm(p => ({ ...p, novoVenc: e.target.value }))}
+                style={S.input} />
+              <div style={{ fontSize: 11, color: C.textDim, marginTop: 6 }}>
+                Calculado automaticamente. Altere se necessário.
+              </div>
+            </div>
+          )}
 
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={() => setPayModal(null)} style={{ ...S.btnSec, flex: 1 }}>Cancelar</button>
