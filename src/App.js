@@ -576,13 +576,13 @@ export default function App() {
             <div style={{ fontSize: 10, fontWeight: 700, color: C.textDim, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1.5 }}>👥 Clientes</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 16 }}>
               {[
-                { label: "Total",    value: ativos.length,  color: C.blueLight },
-                { label: "Ativos",   value: totalAtivo,     color: C.success },
-                { label: "Expirados",value: totalExpirado,  color: C.danger },
+                { label: "Total",     value: ativos.length, color: C.blueLight },
+                { label: "Ativos",    value: totalAtivo,    color: C.success },
+                { label: "Expirados", value: totalExpirado, color: C.danger },
               ].map(card => (
-                <div key={card.label} style={{ ...S.card, padding: "10px 12px", borderLeft: `3px solid ${card.color}` }}>
-                  <div style={{ fontSize: 20, fontWeight: 900, color: card.color, lineHeight: 1 }}>{card.value}</div>
-                  <div style={{ fontSize: 10, color: C.textDim, marginTop: 4 }}>{card.label}</div>
+                <div key={card.label} style={{ ...S.card, padding: "14px 12px", borderLeft: `3px solid ${card.color}` }}>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: card.color, lineHeight: 1 }}>{card.value}</div>
+                  <div style={{ fontSize: 11, color: C.textDim, marginTop: 6 }}>{card.label}</div>
                 </div>
               ))}
             </div>
@@ -591,13 +591,13 @@ export default function App() {
             <div style={{ fontSize: 10, fontWeight: 700, color: C.textDim, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1.5 }}>💰 Financeiro — {new Date().toLocaleDateString("pt-BR", { month: "short", year: "numeric" })}</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 18 }}>
               {[
-                { label: "Recebido",  value: fmt(recebidoMes),   color: C.success },
-                { label: "Despesas",  value: fmt(totalDespesas), color: C.warning },
-                { label: "Saldo",     value: fmt(saldoMes),      color: saldoMes >= 0 ? C.success : C.danger },
+                { label: "Recebido", value: fmt(recebidoMes),   color: C.success },
+                { label: "Despesas", value: fmt(totalDespesas), color: C.warning },
+                { label: "Saldo",    value: fmt(saldoMes),      color: saldoMes >= 0 ? C.success : C.danger },
               ].map(card => (
-                <div key={card.label} style={{ ...S.card, padding: "10px 12px", borderLeft: `3px solid ${card.color}` }}>
-                  <div style={{ fontSize: 13, fontWeight: 900, color: card.color, lineHeight: 1 }}>{card.value}</div>
-                  <div style={{ fontSize: 10, color: C.textDim, marginTop: 4 }}>{card.label}</div>
+                <div key={card.label} style={{ ...S.card, padding: "14px 12px", borderLeft: `3px solid ${card.color}` }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: card.color, lineHeight: 1 }}>{card.value}</div>
+                  <div style={{ fontSize: 11, color: C.textDim, marginTop: 6 }}>{card.label}</div>
                 </div>
               ))}
             </div>
@@ -943,7 +943,8 @@ export default function App() {
                       </div>
                       <div style={{ display: "flex", gap: 8 }}>
                         <button onClick={() => openPay(c)} style={{ ...S.btnPri, flex: 1, padding: "10px", fontSize: 13 }}>Registrar pagamento</button>
-                        <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, flex: 1, padding: "10px", fontSize: 13 }}>Enviar cobrança</button>
+                        <button onClick={() => confirmarRenovacao(c)} style={{ ...S.btnPri, flex: 1, padding: "10px", fontSize: 13, background: `linear-gradient(135deg,${C.success},#059669)` }}>Renovar</button>
+                        <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, padding: "10px 12px", fontSize: 12 }}>Cobrar</button>
                       </div>
                     </div>
                   );
