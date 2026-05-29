@@ -944,10 +944,10 @@ export default function App() {
                           </div>
                         </div>
                       </div>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button onClick={() => openPay(c)} style={{ ...S.btnPri, flex: 1, padding: "10px", fontSize: 13 }}>Registrar pagamento</button>
-                        <button onClick={() => confirmarRenovacao(c)} style={{ ...S.btnPri, flex: 1, padding: "10px", fontSize: 13, background: `linear-gradient(135deg,${C.success},#059669)` }}>Renovar</button>
-                        <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, padding: "10px 12px", fontSize: 12 }}>Cobrar</button>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button onClick={() => openPay(c)} style={{ ...S.btnPri, flex: 1, padding: "9px 14px", fontSize: 12 }}>Registrar pagamento</button>
+                        <button onClick={() => confirmarRenovacao(c)} style={{ ...S.btnPri, flex: 1, padding: "9px 14px", fontSize: 12, background: `linear-gradient(135deg,${C.success},#059669)` }}>Renovar</button>
+                        <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, flex: 1, padding: "9px 14px", fontSize: 12 }}>Enviar cobrança</button>
                       </div>
                     </div>
                   );
