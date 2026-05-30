@@ -114,50 +114,53 @@ const maskValor = (v) => {
 };
 const unMaskValor = (v) => parseFloat(v.replace(/[^\d,]/g, "").replace(",", ".")) || 0;
 
-// ── Paleta Liberty TV ─────────────────────────────────────────
+// ── Paleta Dark Premium + Neon Blue ──────────────────────────
 const C = {
-  bg:         "#020b2e",
-  bgCard:     "#071040",
-  bgCard2:    "#040d35",
-  bgHeader:   "#030e38",
-  border:     "#1a3580",
-  border2:    "#0d2060",
-  blue:       "#1a4fd8",
-  blueBright: "#2d6aff",
-  blueLight:  "#4da6ff",
-  blueDark:   "#0f30a0",
-  blueGlow:   "#1a4fd840",
-  white:      "#ffffff",
-  textLight:  "#e8f0ff",   // mais claro — melhor contraste
-  textMuted:  "#8fb0e0",   // era #6a90cc — mais legível
-  textDim:    "#5a7ab0",   // era #2a4080 — muito escuro, agora legível
-  success:    "#00d68f",
-  warning:    "#ffb020",
-  danger:     "#ff5c5c",
+  bg:         "#060e24",        // azul escuro profundo
+  bgCard:     "#0c1a3a",        // cards — azul naval
+  bgCard2:    "#081428",        // inputs e cards secundários
+  bgHeader:   "#07102e",        // header
+  border:     "#1e3a6e",        // borda padrão
+  border2:    "#102050",        // borda sutil
+  blue:       "#2563ff",        // azul principal
+  blueBright: "#4d8aff",        // azul neon brilhante
+  blueLight:  "#7eb3ff",        // azul claro
+  blueDark:   "#1040cc",        // azul escuro
+  blueGlow:   "#2563ff35",      // glow azul
+  blueGlow2:  "#2563ff15",      // glow suave
+  neon:       "#00d4ff",        // ciano neon
+  neonGlow:   "#00d4ff30",      // glow ciano
+  white:      "#f0f6ff",        // branco levemente azulado
+  textLight:  "#cce0ff",
+  textMuted:  "#7aa0d4",
+  textDim:    "#3a5a8a",
+  success:    "#00e5a0",        // verde neon
+  successGlow:"#00e5a025",
+  warning:    "#ffb830",
+  warningGlow:"#ffb83025",
+  danger:     "#ff4d6a",
+  dangerGlow: "#ff4d6a25",
 };
-
 
 const STATUS = {
-  ativo:    { bg: "#002a1a", text: "#00d68f", border: "#00d68f30", label: "Ativo" },
-  expirado: { bg: "#2a0a0a", text: "#ff5c5c", border: "#ff5c5c30", label: "Expirado" },
+  ativo:    { bg: "#00261a", text: "#00e5a0", border: "#00e5a030", label: "Ativo" },
+  expirado: { bg: "#260010", text: "#ff4d6a", border: "#ff4d6a30", label: "Expirado" },
 };
 
-// Status simples baseado só no vencimento
 const getStatusSimples = (c) => diffDias(c.vencimento) >= 0 ? "ativo" : "expirado";
-
 const isDueToday = (c) => diffDias(c.vencimento) === 0;
 const isDueSoon  = (c) => { const d = diffDias(c.vencimento); return d > 0 && d <= 3; };
 
 const S = {
   page:    { fontFamily: "'Roboto', sans-serif", background: C.bg, minHeight: "100vh", color: C.white },
-  card:    { background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12 },
-  input:   { width: "100%", background: C.bgCard2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px", color: C.white, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "'Roboto', sans-serif" },
-  btnPri:  { background: `linear-gradient(135deg, ${C.blueBright}, ${C.blueDark})`, color: "#fff", border: "none", borderRadius: 8, padding: "12px 20px", fontSize: 14, fontWeight: 500, cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
-  btnSec:  { background: C.bgCard2, color: C.textMuted, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 20px", fontSize: 14, cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
-  btnSm:   { background: C.bgCard2, border: `1px solid ${C.border2}`, borderRadius: 6, padding: "6px 12px", fontSize: 12, color: C.textMuted, cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
-  btnWarn: { background: "#2a1a00", border: `1px solid ${C.warning}40`, borderRadius: 6, padding: "6px 12px", fontSize: 12, color: C.warning, cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
-  btnWa:   { background: "#003d1a", border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, color: "#25d366", cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
-  overlay: { position: "fixed", inset: 0, background: "#00000099", backdropFilter: "blur(4px)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 200, padding: 0, pointerEvents: "all" },
+  card:    { background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 14, boxShadow: `0 2px 12px ${C.blueGlow2}` },
+  input:   { width: "100%", background: C.bgCard2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px", color: C.white, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "'Roboto', sans-serif", transition: "border-color .2s" },
+  btnPri:  { background: `linear-gradient(135deg, ${C.blueBright}, ${C.blueDark})`, color: "#fff", border: "none", borderRadius: 10, padding: "12px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Roboto', sans-serif", boxShadow: `0 2px 12px ${C.blueGlow}` },
+  btnSec:  { background: C.bgCard2, color: C.textMuted, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 20px", fontSize: 14, cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
+  btnSm:   { background: C.bgCard2, border: `1px solid ${C.border2}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, color: C.textMuted, cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
+  btnWarn: { background: C.warningGlow, border: `1px solid ${C.warning}50`, borderRadius: 8, padding: "6px 12px", fontSize: 12, color: C.warning, cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
+  btnWa:   { background: "#00261a", border: `1px solid #00e5a030`, borderRadius: 8, padding: "6px 12px", fontSize: 12, color: "#00e5a0", cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
+  overlay: { position: "fixed", inset: 0, background: "#00000088", backdropFilter: "blur(8px)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 200, padding: 0, pointerEvents: "all" },
 };
 
 // ── WhatsApp ──────────────────────────────────────────────────
@@ -521,41 +524,41 @@ export default function App() {
         .fin{animation:fadeIn 0.2s ease both}
         select option{background:${C.bgCard};color:${C.white}}
         input::placeholder{color:${C.textDim}}
-        button:active{opacity:0.75}
-        /* desktop: esconde bottom nav, mostra top nav */
+        button:active{opacity:0.8;transform:scale(0.97)}
+        input:focus{border-color:${C.blueBright}!important;box-shadow:0 0 0 2px ${C.blueGlow}}
+        /* desktop */
         @media(min-width:640px){
           .bottom-nav{display:none!important}
-          .top-nav{display:flex!important}
           .fab{bottom:24px!important}
           .main-content{padding-bottom:24px!important}
         }
-        /* mobile: esconde top nav */
         @media(max-width:639px){
           .top-nav{display:none!important}
         }
       `}</style>
 
       {/* ══ HEADER ══ */}
-      <header style={{ background: C.bgHeader, borderBottom: `1px solid ${C.border}`, padding: "0 16px", position: "sticky", top: 0, zIndex: 50 }}>
-        <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", height: 58 }}>
+      <header style={{ background: C.bgHeader, borderBottom: `1px solid ${C.border}`, padding: "0 16px", position: "sticky", top: 0, zIndex: 50, boxShadow: `0 1px 20px ${C.blueGlow}` }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", height: 60 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <img src="/logo.jpg" alt="Liberty TV" style={{ height: 38, borderRadius: 7, objectFit: "cover" }} />
+            <img src="/logo.jpg" alt="Liberty TV" style={{ height: 40, borderRadius: 8, objectFit: "cover", boxShadow: `0 0 12px ${C.blueGlow}` }} />
             <div style={{ borderLeft: `1px solid ${C.border}`, paddingLeft: 10 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: C.white, letterSpacing: 1 }}>LIBERTY TV</div>
-              <div style={{ fontSize: 9, color: C.textMuted, fontStyle: "italic" }}>entretenimento, sem limites</div>
+              <div style={{ fontWeight: 800, fontSize: 13, color: C.white, letterSpacing: 1.5, fontFamily: "'Inter', sans-serif" }}>LIBERTY TV</div>
+              <div style={{ fontSize: 9, color: C.neon, fontStyle: "italic", letterSpacing: 0.5 }}>entretenimento, sem limites</div>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {/* Top nav — só desktop */}
             {!isMobile && (
-              <nav style={{ display: "flex", gap: 2 }}>
+              <nav style={{ display: "flex", gap: 4 }}>
                 {navItems.map(t => (
                   <button key={t.key} onClick={() => setView(t.key)} style={{
-                    padding: "7px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12,
-                    fontWeight: view === t.key ? 700 : 400,
-                    background: view === t.key ? C.blue : "transparent",
-                    color: view === t.key ? "#fff" : C.textMuted,
-                    fontFamily: "'Roboto',sans-serif", transition: "all .15s"
+                    padding: "7px 14px", borderRadius: 8, border: view === t.key ? `1px solid ${C.blueBright}50` : "1px solid transparent",
+                    cursor: "pointer", fontSize: 12, fontWeight: view === t.key ? 700 : 400,
+                    background: view === t.key ? `linear-gradient(135deg,${C.blueBright}30,${C.blueDark}20)` : "transparent",
+                    color: view === t.key ? C.blueBright : C.textMuted,
+                    fontFamily: "'Roboto',sans-serif", transition: "all .15s",
+                    boxShadow: view === t.key ? `0 0 12px ${C.blueGlow}` : "none"
                   }}>{t.icon} {t.label}</button>
                 ))}
               </nav>
@@ -1088,17 +1091,18 @@ export default function App() {
         <nav style={{
           position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 100,
           background: C.bgHeader, borderTop: `1px solid ${C.border}`,
-          display: "flex", justifyContent: "space-around", alignItems: "center", height: 62, padding: "0 4px"
+          display: "flex", justifyContent: "space-around", alignItems: "center", height: 62, padding: "0 4px",
+          boxShadow: `0 -1px 20px ${C.blueGlow2}`
         }}>
           {navItems.map(t => (
             <button key={t.key} onClick={() => setView(t.key)} style={{
               flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              gap: 2, background: view === t.key ? `${C.blue}30` : "none", border: "none", cursor: "pointer", padding: "6px 4px", borderRadius: 10,
-              color: view === t.key ? "#ffffff" : "rgba(255,255,255,0.45)", fontFamily: "'Roboto',sans-serif", transition: "all .15s"
+              gap: 2, background: "none", border: "none", cursor: "pointer", padding: "6px 4px", borderRadius: 10,
+              color: view === t.key ? C.blueBright : "rgba(255,255,255,0.35)", fontFamily: "'Roboto',sans-serif", transition: "all .15s"
             }}>
               <span style={{ fontSize: 22 }}>{t.icon}</span>
               <span style={{ fontSize: 10, fontWeight: view === t.key ? 700 : 400 }}>{t.label}</span>
-              {view === t.key && <div style={{ width: 20, height: 2, background: C.blueBright, borderRadius: 1 }} />}
+              {view === t.key && <div style={{ width: 20, height: 2, background: C.blueBright, borderRadius: 1, boxShadow: `0 0 6px ${C.blueBright}` }} />}
             </button>
           ))}
         </nav>
