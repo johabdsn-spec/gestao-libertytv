@@ -3,7 +3,12 @@ import {
   collection, addDoc, updateDoc, deleteDoc,
   doc, onSnapshot, query, orderBy
 } from "firebase/firestore";
-import { db } from "./firebase";
+import {
+  signInWithEmailAndPassword, signOut,
+  onAuthStateChanged, sendPasswordResetEmail,
+  setPersistence, browserLocalPersistence, browserSessionPersistence
+} from "firebase/auth";
+import { db, auth } from "./firebase";
 
 // ── helpers ───────────────────────────────────────────────────
 const todayISO  = () => new Date().toISOString().split("T")[0];
@@ -114,50 +119,53 @@ const maskValor = (v) => {
 };
 const unMaskValor = (v) => parseFloat(v.replace(/[^\d,]/g, "").replace(",", ".")) || 0;
 
-// ── Paleta Liberty TV ─────────────────────────────────────────
+// ── Paleta Dark Premium + Neon Blue ──────────────────────────
 const C = {
-  bg:         "#020b2e",
-  bgCard:     "#071040",
-  bgCard2:    "#040d35",
-  bgHeader:   "#030e38",
-  border:     "#1a3580",
-  border2:    "#0d2060",
-  blue:       "#1a4fd8",
-  blueBright: "#2d6aff",
-  blueLight:  "#4da6ff",
-  blueDark:   "#0f30a0",
-  blueGlow:   "#1a4fd840",
-  white:      "#ffffff",
-  textLight:  "#e8f0ff",   // mais claro — melhor contraste
-  textMuted:  "#8fb0e0",   // era #6a90cc — mais legível
-  textDim:    "#5a7ab0",   // era #2a4080 — muito escuro, agora legível
-  success:    "#00d68f",
-  warning:    "#ffb020",
-  danger:     "#ff5c5c",
+  bg:         "#060e24",        // azul escuro profundo
+  bgCard:     "#0c1a3a",        // cards — azul naval
+  bgCard2:    "#081428",        // inputs e cards secundários
+  bgHeader:   "#07102e",        // header
+  border:     "#1e3a6e",        // borda padrão
+  border2:    "#102050",        // borda sutil
+  blue:       "#2563ff",        // azul principal
+  blueBright: "#4d8aff",        // azul neon brilhante
+  blueLight:  "#7eb3ff",        // azul claro
+  blueDark:   "#1040cc",        // azul escuro
+  blueGlow:   "#2563ff35",      // glow azul
+  blueGlow2:  "#2563ff15",      // glow suave
+  neon:       "#00d4ff",        // ciano neon
+  neonGlow:   "#00d4ff30",      // glow ciano
+  white:      "#f0f6ff",        // branco levemente azulado
+  textLight:  "#cce0ff",
+  textMuted:  "#7aa0d4",
+  textDim:    "#3a5a8a",
+  success:    "#00e5a0",        // verde neon
+  successGlow:"#00e5a025",
+  warning:    "#ffb830",
+  warningGlow:"#ffb83025",
+  danger:     "#ff4d6a",
+  dangerGlow: "#ff4d6a25",
 };
-
 
 const STATUS = {
-  ativo:    { bg: "#002a1a", text: "#00d68f", border: "#00d68f30", label: "Ativo" },
-  expirado: { bg: "#2a0a0a", text: "#ff5c5c", border: "#ff5c5c30", label: "Expirado" },
+  ativo:    { bg: "#00261a", text: "#00e5a0", border: "#00e5a030", label: "Ativo" },
+  expirado: { bg: "#260010", text: "#ff4d6a", border: "#ff4d6a30", label: "Expirado" },
 };
 
-// Status simples baseado só no vencimento
 const getStatusSimples = (c) => diffDias(c.vencimento) >= 0 ? "ativo" : "expirado";
-
 const isDueToday = (c) => diffDias(c.vencimento) === 0;
 const isDueSoon  = (c) => { const d = diffDias(c.vencimento); return d > 0 && d <= 3; };
 
 const S = {
   page:    { fontFamily: "'Roboto', sans-serif", background: C.bg, minHeight: "100vh", color: C.white },
-  card:    { background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12 },
-  input:   { width: "100%", background: C.bgCard2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px", color: C.white, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "'Roboto', sans-serif" },
-  btnPri:  { background: `linear-gradient(135deg, ${C.blueBright}, ${C.blueDark})`, color: "#fff", border: "none", borderRadius: 8, padding: "12px 20px", fontSize: 14, fontWeight: 500, cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
-  btnSec:  { background: C.bgCard2, color: C.textMuted, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 20px", fontSize: 14, cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
-  btnSm:   { background: C.bgCard2, border: `1px solid ${C.border2}`, borderRadius: 6, padding: "6px 12px", fontSize: 12, color: C.textMuted, cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
-  btnWarn: { background: "#2a1a00", border: `1px solid ${C.warning}40`, borderRadius: 6, padding: "6px 12px", fontSize: 12, color: C.warning, cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
-  btnWa:   { background: "#003d1a", border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, color: "#25d366", cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
-  overlay: { position: "fixed", inset: 0, background: "#00000099", backdropFilter: "blur(4px)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 200, padding: 0, pointerEvents: "all" },
+  card:    { background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 14, boxShadow: `0 2px 12px ${C.blueGlow2}` },
+  input:   { width: "100%", background: C.bgCard2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px", color: C.white, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "'Roboto', sans-serif", transition: "border-color .2s" },
+  btnPri:  { background: `linear-gradient(135deg, ${C.blueBright}, ${C.blueDark})`, color: "#fff", border: "none", borderRadius: 10, padding: "12px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Roboto', sans-serif", boxShadow: `0 2px 12px ${C.blueGlow}` },
+  btnSec:  { background: C.bgCard2, color: C.textMuted, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 20px", fontSize: 14, cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
+  btnSm:   { background: C.bgCard2, border: `1px solid ${C.border2}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, color: C.textMuted, cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
+  btnWarn: { background: C.warningGlow, border: `1px solid ${C.warning}50`, borderRadius: 8, padding: "6px 12px", fontSize: 12, color: C.warning, cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
+  btnWa:   { background: "#00261a", border: `1px solid #00e5a030`, borderRadius: 8, padding: "6px 12px", fontSize: 12, color: "#00e5a0", cursor: "pointer", fontFamily: "'Roboto', sans-serif" },
+  overlay: { position: "fixed", inset: 0, background: "#00000088", backdropFilter: "blur(8px)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 200, padding: 0, pointerEvents: "all" },
 };
 
 // ── WhatsApp ──────────────────────────────────────────────────
@@ -188,6 +196,163 @@ const emptyForm = () => ({
   isMac: false, mac: "", code: "", appNome: "", obs: ""
 });
 
+// ── Login ─────────────────────────────────────────────────────
+function Login() {
+  const [email,       setEmail]       = useState("");
+  const [senha,       setSenha]       = useState("");
+  const [lembrar,     setLembrar]     = useState(true);
+  const [erro,        setErro]        = useState("");
+  const [carregando,  setCarregando]  = useState(false);
+  const [resetMode,   setResetMode]   = useState(false);
+  const [resetOk,     setResetOk]     = useState(false);
+
+  const C_login = {
+    bg: "#060e24", card: "#0c1a3a", border: "#1e3a6e",
+    blue: "#2563ff", blueL: "#4d8aff", neon: "#00d4ff",
+    white: "#f0f6ff", muted: "#7aa0d4", danger: "#ff4d6a",
+    success: "#00e5a0",
+  };
+
+  const inputStyle = {
+    width: "100%", background: "#081428", border: `1px solid ${C_login.border}`,
+    borderRadius: 10, padding: "13px 14px", color: C_login.white, fontSize: 15,
+    outline: "none", boxSizing: "border-box", fontFamily: "'Roboto', sans-serif",
+  };
+
+  const handleLogin = async (e) => {
+    e?.preventDefault();
+    if (!email || !senha) { setErro("Preencha e-mail e senha."); return; }
+    setCarregando(true); setErro("");
+    try {
+      await setPersistence(auth, lembrar ? browserLocalPersistence : browserSessionPersistence);
+      await signInWithEmailAndPassword(auth, email, senha);
+    } catch (err) {
+      setErro("E-mail ou senha incorretos.");
+      setCarregando(false);
+    }
+  };
+
+  const handleReset = async (e) => {
+    e?.preventDefault();
+    if (!email) { setErro("Digite seu e-mail."); return; }
+    setCarregando(true); setErro("");
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setResetOk(true);
+    } catch {
+      setErro("Não foi possível enviar o e-mail. Verifique o endereço.");
+    }
+    setCarregando(false);
+  };
+
+  return (
+    <div style={{ fontFamily: "'Roboto', sans-serif", background: C_login.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&family=Inter:wght@600;700;800&display=swap" rel="stylesheet" />
+
+      <div style={{ width: "100%", maxWidth: 380 }}>
+        {/* Logo */}
+        <div style={{ textAlign: "center", marginBottom: 36 }}>
+          <img src="/logo.jpg" alt="Liberty TV" style={{ width: 100, borderRadius: 16, marginBottom: 14, boxShadow: `0 0 30px #2563ff40` }} />
+          <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 800, fontSize: 20, color: C_login.white, letterSpacing: 2 }}>LIBERTY TV</div>
+          <div style={{ fontSize: 11, color: C_login.neon, fontStyle: "italic", marginTop: 4 }}>entretenimento, sem limites</div>
+        </div>
+
+        {/* Card */}
+        <div style={{ background: C_login.card, border: `1px solid ${C_login.border}`, borderRadius: 18, padding: "28px 24px", boxShadow: `0 4px 40px #2563ff20` }}>
+
+          {!resetMode ? (
+            <>
+              <div style={{ fontWeight: 700, fontSize: 17, color: C_login.white, marginBottom: 22, textAlign: "center" }}>Entrar</div>
+
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, color: C_login.muted, marginBottom: 5, textTransform: "uppercase", letterSpacing: 1 }}>E-mail</div>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleLogin()}
+                  placeholder="seu@email.com" style={inputStyle} autoComplete="email" />
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 11, color: C_login.muted, marginBottom: 5, textTransform: "uppercase", letterSpacing: 1 }}>Senha</div>
+                <input type="password" value={senha} onChange={e => setSenha(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleLogin()}
+                  placeholder="••••••••" style={inputStyle} autoComplete="current-password" />
+              </div>
+
+              {/* Lembrar de mim */}
+              <div onClick={() => setLembrar(l => !l)}
+                style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, cursor: "pointer" }}>
+                <div style={{ width: 20, height: 20, borderRadius: 6, border: `2px solid ${lembrar ? C_login.blue : C_login.border}`, background: lembrar ? C_login.blue : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all .2s" }}>
+                  {lembrar && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+                </div>
+                <span style={{ fontSize: 13, color: C_login.muted }}>Lembrar de mim</span>
+              </div>
+
+              {erro && (
+                <div style={{ background: "#26000e", border: `1px solid ${C_login.danger}40`, borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: C_login.danger }}>
+                  {erro}
+                </div>
+              )}
+
+              <button onClick={handleLogin} disabled={carregando}
+                style={{ width: "100%", background: `linear-gradient(135deg, #4d8aff, #1040cc)`, color: "#fff", border: "none", borderRadius: 10, padding: "14px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'Roboto', sans-serif", boxShadow: `0 2px 20px #2563ff40`, marginBottom: 16 }}>
+                {carregando ? "Entrando..." : "Entrar"}
+              </button>
+
+              <div style={{ textAlign: "center" }}>
+                <button onClick={() => { setResetMode(true); setErro(""); }}
+                  style={{ background: "none", border: "none", color: C_login.blueL, fontSize: 13, cursor: "pointer", fontFamily: "'Roboto', sans-serif" }}>
+                  Esqueci minha senha
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontWeight: 700, fontSize: 17, color: C_login.white, marginBottom: 8, textAlign: "center" }}>Recuperar senha</div>
+              <div style={{ fontSize: 13, color: C_login.muted, marginBottom: 22, textAlign: "center" }}>
+                Digite seu e-mail e enviaremos um link de recuperação.
+              </div>
+
+              {resetOk ? (
+                <div style={{ background: "#00261a", border: `1px solid ${C_login.success}40`, borderRadius: 10, padding: "16px", textAlign: "center", marginBottom: 20 }}>
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
+                  <div style={{ fontWeight: 600, color: C_login.success, marginBottom: 4 }}>E-mail enviado!</div>
+                  <div style={{ fontSize: 13, color: C_login.muted }}>Verifique sua caixa de entrada.</div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, color: C_login.muted, marginBottom: 5, textTransform: "uppercase", letterSpacing: 1 }}>E-mail</div>
+                    <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                      placeholder="seu@email.com" style={inputStyle} />
+                  </div>
+
+                  {erro && (
+                    <div style={{ background: "#26000e", border: `1px solid ${C_login.danger}40`, borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: C_login.danger }}>
+                      {erro}
+                    </div>
+                  )}
+
+                  <button onClick={handleReset} disabled={carregando}
+                    style={{ width: "100%", background: `linear-gradient(135deg, #4d8aff, #1040cc)`, color: "#fff", border: "none", borderRadius: 10, padding: "14px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'Roboto', sans-serif", marginBottom: 16 }}>
+                    {carregando ? "Enviando..." : "Enviar link de recuperação"}
+                  </button>
+                </>
+              )}
+
+              <div style={{ textAlign: "center" }}>
+                <button onClick={() => { setResetMode(false); setResetOk(false); setErro(""); }}
+                  style={{ background: "none", border: "none", color: C_login.muted, fontSize: 13, cursor: "pointer", fontFamily: "'Roboto', sans-serif" }}>
+                  ← Voltar ao login
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Componentes fora do App (evita remount a cada render) ────
 const Label = ({ children }) => (
   <label style={{ fontSize: 11, fontWeight: 500, color: C.textMuted, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: 1 }}>{children}</label>
@@ -215,6 +380,7 @@ export default function App() {
   const [servidores,    setServidores]    = useState([]);
   const [despesas,      setDespesas]      = useState([]);
   const [loading,       setLoading]       = useState(true);
+  const [user,          setUser]          = useState(undefined); // undefined = verificando, null = deslogado
   const [view,          setView]          = useState("dashboard");
   const [search,        setSearch]        = useState("");
   const [filterStatus,    setFilterStatus]    = useState("todos");
@@ -249,6 +415,13 @@ export default function App() {
 
   // ── Firebase ─────────────────────────────────────────────
   useEffect(() => {
+    // Auth listener
+    const unsubAuth = onAuthStateChanged(auth, u => setUser(u || null));
+    return unsubAuth;
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
     const q1 = query(collection(db, "clientes"),   orderBy("nome"));
     const q2 = query(collection(db, "servidores"), orderBy("nome"));
     const q3 = query(collection(db, "despesas"),   orderBy("criadoEm"));
@@ -256,7 +429,7 @@ export default function App() {
     const u2 = onSnapshot(q2, s => setServidores(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     const u3 = onSnapshot(q3, s => setDespesas(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     return () => { u1(); u2(); u3(); };
-  }, []);
+  }, [user]);
 
   // ── computed ──────────────────────────────────────────────
   const mesAtual = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; };
@@ -467,6 +640,17 @@ export default function App() {
     }));
   };
 
+  // Verificando autenticação
+  if (user === undefined) return (
+    <div style={{ background: "#060e24", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ width: 24, height: 24, border: "3px solid #4d8aff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
+  // Não autenticado → tela de login
+  if (!user) return <Login />;
+
   if (loading) return (
     <div style={{ ...S.page, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, minHeight: "100vh" }}>
       <img src="/logo.jpg" alt="Liberty TV" style={{ width: 140, borderRadius: 16 }} />
@@ -521,45 +705,54 @@ export default function App() {
         .fin{animation:fadeIn 0.2s ease both}
         select option{background:${C.bgCard};color:${C.white}}
         input::placeholder{color:${C.textDim}}
-        button:active{opacity:0.75}
-        /* desktop: esconde bottom nav, mostra top nav */
+        button:active{opacity:0.8;transform:scale(0.97)}
+        input:focus{border-color:${C.blueBright}!important;box-shadow:0 0 0 2px ${C.blueGlow}}
+        /* desktop */
         @media(min-width:640px){
           .bottom-nav{display:none!important}
-          .top-nav{display:flex!important}
           .fab{bottom:24px!important}
           .main-content{padding-bottom:24px!important}
         }
-        /* mobile: esconde top nav */
         @media(max-width:639px){
           .top-nav{display:none!important}
         }
       `}</style>
 
       {/* ══ HEADER ══ */}
-      <header style={{ background: C.bgHeader, borderBottom: `1px solid ${C.border}`, padding: "0 16px", position: "sticky", top: 0, zIndex: 50 }}>
-        <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", height: 58 }}>
+      <header style={{ background: C.bgHeader, borderBottom: `1px solid ${C.border}`, padding: "0 16px", position: "sticky", top: 0, zIndex: 50, boxShadow: `0 1px 20px ${C.blueGlow}` }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", height: 60 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <img src="/logo.jpg" alt="Liberty TV" style={{ height: 38, borderRadius: 7, objectFit: "cover" }} />
+            <img src="/logo.jpg" alt="Liberty TV" style={{ height: 40, borderRadius: 8, objectFit: "cover", boxShadow: `0 0 12px ${C.blueGlow}` }} />
             <div style={{ borderLeft: `1px solid ${C.border}`, paddingLeft: 10 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: C.white, letterSpacing: 1 }}>LIBERTY TV</div>
-              <div style={{ fontSize: 9, color: C.textMuted, fontStyle: "italic" }}>entretenimento, sem limites</div>
+              <div style={{ fontWeight: 800, fontSize: 13, color: C.white, letterSpacing: 1.5, fontFamily: "'Inter', sans-serif" }}>LIBERTY TV</div>
+              <div style={{ fontSize: 9, color: C.neon, fontStyle: "italic", letterSpacing: 0.5 }}>entretenimento, sem limites</div>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {/* Top nav — só desktop */}
             {!isMobile && (
-              <nav style={{ display: "flex", gap: 2 }}>
+              <nav style={{ display: "flex", gap: 4 }}>
                 {navItems.map(t => (
                   <button key={t.key} onClick={() => setView(t.key)} style={{
-                    padding: "7px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12,
-                    fontWeight: view === t.key ? 700 : 400,
-                    background: view === t.key ? C.blue : "transparent",
-                    color: view === t.key ? "#fff" : C.textMuted,
-                    fontFamily: "'Roboto',sans-serif", transition: "all .15s"
+                    padding: "7px 14px", borderRadius: 8, border: view === t.key ? `1px solid ${C.blueBright}50` : "1px solid transparent",
+                    cursor: "pointer", fontSize: 12, fontWeight: view === t.key ? 700 : 400,
+                    background: view === t.key ? `linear-gradient(135deg,${C.blueBright}30,${C.blueDark}20)` : "transparent",
+                    color: view === t.key ? C.blueBright : C.textMuted,
+                    fontFamily: "'Roboto',sans-serif", transition: "all .15s",
+                    boxShadow: view === t.key ? `0 0 12px ${C.blueGlow}` : "none"
                   }}>{t.icon} {t.label}</button>
                 ))}
               </nav>
             )}
+            {/* Logout */}
+            <button onClick={() => signOut(auth)} title="Sair"
+              style={{ background: C.bgCard2, border: `1px solid ${C.border2}`, borderRadius: 8, padding: "7px 10px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.textMuted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+            </button>
           </div>
         </div>
       </header>
@@ -1088,17 +1281,18 @@ export default function App() {
         <nav style={{
           position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 100,
           background: C.bgHeader, borderTop: `1px solid ${C.border}`,
-          display: "flex", justifyContent: "space-around", alignItems: "center", height: 62, padding: "0 4px"
+          display: "flex", justifyContent: "space-around", alignItems: "center", height: 62, padding: "0 4px",
+          boxShadow: `0 -1px 20px ${C.blueGlow2}`
         }}>
           {navItems.map(t => (
             <button key={t.key} onClick={() => setView(t.key)} style={{
               flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              gap: 2, background: view === t.key ? `${C.blue}30` : "none", border: "none", cursor: "pointer", padding: "6px 4px", borderRadius: 10,
-              color: view === t.key ? "#ffffff" : "rgba(255,255,255,0.45)", fontFamily: "'Roboto',sans-serif", transition: "all .15s"
+              gap: 2, background: "none", border: "none", cursor: "pointer", padding: "6px 4px", borderRadius: 10,
+              color: view === t.key ? C.blueBright : "rgba(255,255,255,0.35)", fontFamily: "'Roboto',sans-serif", transition: "all .15s"
             }}>
               <span style={{ fontSize: 22 }}>{t.icon}</span>
               <span style={{ fontSize: 10, fontWeight: view === t.key ? 700 : 400 }}>{t.label}</span>
-              {view === t.key && <div style={{ width: 20, height: 2, background: C.blueBright, borderRadius: 1 }} />}
+              {view === t.key && <div style={{ width: 20, height: 2, background: C.blueBright, borderRadius: 1, boxShadow: `0 0 6px ${C.blueBright}` }} />}
             </button>
           ))}
         </nav>

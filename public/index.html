@@ -2,14 +2,42 @@
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#001166" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <!-- PWA -->
+    <meta name="theme-color" content="#060e24" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+
+    <!-- iOS PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Liberty TV" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo.jpg" />
+
+    <!-- SEO -->
     <meta name="description" content="Liberty TV — Gestão de Pagamentos" />
     <title>Liberty TV | Gestão</title>
-    <link rel="icon" href="%PUBLIC_URL%/logo.jpg" />
+
+    <style>
+      body { margin: 0; background: #060e24; }
+      /* Safe area para iPhone com notch */
+      #root { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+    </style>
   </head>
-  <body style="margin:0;background:#020b2e">
+  <body>
     <noscript>Você precisa de JavaScript para usar este app.</noscript>
     <div id="root"></div>
+
+    <script>
+      // Registra o Service Worker
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/service-worker.js')
+            .then(function(reg) { console.log('SW registrado:', reg.scope); })
+            .catch(function(err) { console.log('SW falhou:', err); });
+        });
+      }
+    </script>
   </body>
 </html>
