@@ -451,15 +451,10 @@ export default function App() {
   }, 0);
 
   // Despesas do mês
-  const despesasFixasMes  = despesas.filter(d => d.tipo === "fixa").reduce((s, d) => s + Number(d.valor || 0), 0);
+  const despesasFixasMes   = despesas.filter(d => d.tipo === "fixa").reduce((s, d) => s + Number(d.valor || 0), 0);
   const despesasAvulsasMes = despesas.filter(d => d.tipo === "avulsa" && d.mes === mes).reduce((s, d) => s + Number(d.valor || 0), 0);
-  // Créditos: custo do servidor × clientes que renovaram no mês
-  const creditosMes = ativos.reduce((sum, c) => {
-    const renovou = (c.pagamentos || []).some(p => p.data && p.data.startsWith(mes) && p.renovar !== false);
-    if (!renovou) return sum;
-    const serv = servidores.find(s => s.id === c.servidorId);
-    return sum + Number(serv?.creditoValor || 0);
-  }, 0);
+  // Créditos: despesas do tipo "credito" registradas este mês (geradas automaticamente na renovação)
+  const creditosMes = despesas.filter(d => d.tipo === "credito" && d.mes === mes).reduce((s, d) => s + Number(d.valor || 0), 0);
   const totalDespesas = despesasFixasMes + despesasAvulsasMes + creditosMes;
   const saldoMes      = recebidoMes - totalDespesas;
 
@@ -551,6 +546,21 @@ export default function App() {
       pagamentos: [...(c.pagamentos || []), novo],
       vencimento: novoVenc,
     });
+
+    // Se renovou, registra despesa de crédito automaticamente
+    if (renovado) {
+      const serv = servidores.find(s => s.id === c.servidorId);
+      if (serv?.creditoValor) {
+        await addDoc(collection(db, "despesas"), {
+          nome: `Crédito — ${c.nome} (${serv.nome})`,
+          valor: Number(serv.creditoValor),
+          tipo: "credito",
+          mes: mesAtual(),
+          obs: `Renovação em ${payForm.data}`,
+          criadoEm: todayISO(),
+        });
+      }
+    }
     setSaving(false);
     setLastPay({ client: { ...c, vencimento: novoVenc }, pagamento: novo, renovado });
     setPayModal(null);
@@ -566,11 +576,25 @@ export default function App() {
     setRenovModal({ client: c, novoVenc });
   };
 
-  // Executa a renovação com a data confirmada
+  // Executa a renovação e registra a despesa de crédito automaticamente
   const executarRenovacao = async () => {
     if (!renovModal) return;
     setSaving(true);
-    await updateDoc(doc(db, "clientes", renovModal.client.id), { vencimento: renovModal.novoVenc });
+    const c = renovModal.client;
+    // Atualiza o vencimento do cliente
+    await updateDoc(doc(db, "clientes", c.id), { vencimento: renovModal.novoVenc });
+    // Registra despesa de crédito automaticamente
+    const serv = servidores.find(s => s.id === c.servidorId);
+    if (serv?.creditoValor) {
+      await addDoc(collection(db, "despesas"), {
+        nome: `Crédito — ${c.nome} (${serv.nome})`,
+        valor: Number(serv.creditoValor),
+        tipo: "credito",
+        mes: mesAtual(),
+        obs: `Renovação em ${todayISO()}`,
+        criadoEm: todayISO(),
+      });
+    }
     setSaving(false);
     setRenovModal(null);
   };
@@ -1170,9 +1194,9 @@ export default function App() {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 24 }}>
               {[
-                { label: "Recebido no mês", value: fmt(recebidoMes),   color: C.success, icon: "✅" },
-                { label: "Créditos",        value: fmt(creditosMes),   color: C.warning, icon: "🖥️" },
-                { label: "Despesas fixas",  value: fmt(despesasFixasMes),  color: C.warning, icon: "📋" },
+                { label: "Recebido no mês", value: fmt(recebidoMes),      color: C.success,  icon: "✅" },
+                { label: "Créditos",        value: fmt(creditosMes),      color: C.warning,  icon: "🖥️" },
+                { label: "Despesas fixas",  value: fmt(despesasFixasMes), color: C.warning,  icon: "📋" },
                 { label: "Avulsas",         value: fmt(despesasAvulsasMes), color: C.warning, icon: "📌" },
               ].map(card => (
                 <div key={card.label} style={{ ...S.card, padding: "14px 16px", borderTop: `3px solid ${card.color}` }}>
@@ -1190,8 +1214,25 @@ export default function App() {
               <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>Recebido ({fmt(recebidoMes)}) − Despesas ({fmt(totalDespesas)})</div>
             </div>
 
-            {/* Despesas fixas */}
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.textDim, marginBottom: 10, textTransform: "uppercase", letterSpacing: 1.5 }}>Despesas fixas</div>
+            {/* Créditos do mês */}
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.textDim, marginBottom: 10, marginTop: 16, textTransform: "uppercase", letterSpacing: 1.5 }}>Créditos registrados — {new Date().toLocaleDateString("pt-BR", { month: "long" })}</div>
+            {despesas.filter(d => d.tipo === "credito" && d.mes === mes).length === 0
+              ? <div style={{ color: C.textDim, fontSize: 13, marginBottom: 16 }}>Nenhum crédito registrado este mês</div>
+              : despesas.filter(d => d.tipo === "credito" && d.mes === mes).map(d => (
+                <div key={d.id} style={{ ...S.card, padding: "12px 16px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontWeight: 500, fontSize: 14 }}>{d.nome}</div>
+                    {d.obs && <div style={{ fontSize: 12, color: C.textMuted }}>{d.obs}</div>}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontWeight: 700, color: C.warning }}>{fmt(d.valor)}</span>
+                    <button onClick={() => deleteDespesa(d.id)} style={{ ...S.btnSm, padding: "5px 8px", borderColor: `${C.danger}40` }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.danger} strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                    </button>
+                  </div>
+                </div>
+              ))
+            }
             {despesas.filter(d => d.tipo === "fixa").length === 0
               ? <div style={{ color: C.textDim, fontSize: 13, marginBottom: 16 }}>Nenhuma despesa fixa cadastrada</div>
               : despesas.filter(d => d.tipo === "fixa").map(d => (
