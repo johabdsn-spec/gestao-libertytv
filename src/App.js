@@ -175,8 +175,13 @@ function enviarWhatsApp(client, pagamento, tipo = "comprovante") {
 
   let msg = "";
   if (tipo === "comprovante") {
+    // Só registrou pagamento — sem renovação
+    msg = "Seu pagamento foi confirmado. Obrigado!";
+  } else if (tipo === "renovacao") {
+    // Registrou pagamento + renovou
     msg = "Seu pagamento foi confirmado e seu acesso renovado. Obrigado!";
   } else {
+    // Cobrança
     const diff = diffDias(client.vencimento);
     let quando = "";
     if (diff < 0)        quando = `*dia ${ptDate(client.vencimento)}*`;
@@ -1010,7 +1015,7 @@ export default function App() {
 
                     {/* Comprovante WA — ícone, só se tiver telefone e pagamento */}
                     {last && c.telefone && (
-                      <button onClick={() => enviarWhatsApp(c, last, "comprovante")} title="Enviar comprovante via WhatsApp" style={{ ...S.btnWa, padding: "8px 10px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <button onClick={() => enviarWhatsApp(c, last, getStatusSimples(c) === "ativo" ? "renovacao" : "comprovante")} title="Enviar comprovante via WhatsApp" style={{ ...S.btnWa, padding: "8px 10px", display: "flex", alignItems: "center", justifyContent: "center" }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#25d366" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                         </svg>
@@ -1610,9 +1615,9 @@ export default function App() {
             }
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {lastPay.client.telefone && (
-                <button onClick={() => { enviarWhatsApp(lastPay.client, lastPay.pagamento, "comprovante"); setLastPay(null); }}
+                <button onClick={() => { enviarWhatsApp(lastPay.client, lastPay.pagamento, lastPay.renovado ? "renovacao" : "comprovante"); setLastPay(null); }}
                   style={{ ...S.btnPri, width: "100%", padding: 14, background: "linear-gradient(135deg,#128c3e,#075e29)" }}>
-                  Enviar comprovante via WhatsApp
+                  Enviar via WhatsApp
                 </button>
               )}
               <button onClick={() => setLastPay(null)} style={{ ...S.btnSec, width: "100%", padding: 14 }}>Fechar</button>
