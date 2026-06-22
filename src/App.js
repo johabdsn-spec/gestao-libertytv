@@ -174,12 +174,15 @@ function enviarWhatsApp(client, pagamento, tipo = "comprovante") {
   if (!tel) { alert("Cliente sem telefone cadastrado!"); return; }
 
   let msg = "";
-  if (tipo === "comprovante") {
-    // Só registrou pagamento — sem renovação
-    msg = "Seu pagamento foi confirmado. Obrigado!";
-  } else if (tipo === "renovacao") {
-    // Registrou pagamento + renovou
+  if (tipo === "renovacao") {
+    // Pagamento + renovação
     msg = "Seu pagamento foi confirmado e seu acesso renovado. Obrigado!";
+  } else if (tipo === "renovacao_simples") {
+    // Só renovação (botão Renovar)
+    msg = "Seu acesso foi renovado. Obrigado!";
+  } else if (tipo === "comprovante") {
+    // Só pagamento, sem renovação
+    msg = "Seu pagamento foi confirmado. Obrigado!";
   } else {
     // Cobrança
     const diff = diffDias(client.vencimento);
@@ -408,6 +411,7 @@ export default function App() {
   const [servForm,      setServForm]      = useState({ nome: "", creditoValor: "", planos: [] });
   const [newPlano,      setNewPlano]      = useState({ nome: "", valor: "", periodicidade: "mensal" });
   const [renovModal,    setRenovModal]    = useState(null);
+  const [renovacaoOk,   setRenovacaoOk]  = useState(null); // client que acabou de renovar
   const [showDespForm,  setShowDespForm]  = useState(false);
   const [despForm,      setDespForm]      = useState({ nome: "", valor: "", tipo: "fixa", mes: "" }); // { client, novoVenc }
 
@@ -586,9 +590,7 @@ export default function App() {
     if (!renovModal) return;
     setSaving(true);
     const c = renovModal.client;
-    // Atualiza o vencimento do cliente
     await updateDoc(doc(db, "clientes", c.id), { vencimento: renovModal.novoVenc });
-    // Registra despesa de crédito automaticamente
     const serv = servidores.find(s => s.id === c.servidorId);
     if (serv?.creditoValor) {
       await addDoc(collection(db, "despesas"), {
@@ -602,6 +604,7 @@ export default function App() {
     }
     setSaving(false);
     setRenovModal(null);
+    setRenovacaoOk({ ...c, vencimento: renovModal.novoVenc });
   };
 
   const desfazerPagamento = async (id) => {
@@ -1617,7 +1620,7 @@ export default function App() {
               {lastPay.client.telefone && (
                 <button onClick={() => { enviarWhatsApp(lastPay.client, lastPay.pagamento, lastPay.renovado ? "renovacao" : "comprovante"); setLastPay(null); }}
                   style={{ ...S.btnPri, width: "100%", padding: 14, background: "linear-gradient(135deg,#128c3e,#075e29)" }}>
-                  Enviar via WhatsApp
+                  {lastPay.renovado ? "Enviar confirmação de renovação" : "Enviar confirmação de pagamento"}
                 </button>
               )}
               <button onClick={() => setLastPay(null)} style={{ ...S.btnSec, width: "100%", padding: 14 }}>Fechar</button>
@@ -1718,6 +1721,32 @@ export default function App() {
                   {saving ? "Salvando..." : "✓ Confirmar renovação"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL PÓS-RENOVAÇÃO ══ */}
+      {renovacaoOk && (
+        <div style={S.overlay}>
+          <div style={{
+            ...S.card, width: "100%", maxWidth: 560, borderRadius: "20px 20px 0 0",
+            padding: "28px 20px 36px", animation: "slideUp 0.25s ease", textAlign: "center"
+          }}>
+            <div style={{ fontSize: 48, marginBottom: 14 }}>🔄</div>
+            <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>Acesso renovado!</h3>
+            <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 6 }}>{renovacaoOk.nome}</div>
+            <div style={{ fontSize: 14, color: C.success, marginBottom: 24 }}>
+              Próx. vencimento: {ptDate(renovacaoOk.vencimento)}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {renovacaoOk.telefone && (
+                <button onClick={() => { enviarWhatsApp(renovacaoOk, null, "renovacao_simples"); setRenovacaoOk(null); }}
+                  style={{ ...S.btnPri, width: "100%", padding: 14, background: "linear-gradient(135deg,#128c3e,#075e29)" }}>
+                  Enviar confirmação via WhatsApp
+                </button>
+              )}
+              <button onClick={() => setRenovacaoOk(null)} style={{ ...S.btnSec, width: "100%", padding: 14 }}>Fechar</button>
             </div>
           </div>
         </div>
