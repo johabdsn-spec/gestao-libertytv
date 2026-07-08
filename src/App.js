@@ -411,7 +411,8 @@ export default function App() {
   const [servForm,      setServForm]      = useState({ nome: "", creditoValor: "", planos: [] });
   const [newPlano,      setNewPlano]      = useState({ nome: "", valor: "", periodicidade: "mensal" });
   const [renovModal,    setRenovModal]    = useState(null);
-  const [renovacaoOk,   setRenovacaoOk]  = useState(null); // client que acabou de renovar
+  const [renovacaoOk,   setRenovacaoOk]  = useState(null);
+  const [confiancaModal, setConfiancaModal] = useState(null); // { client, novoVenc } // client que acabou de renovar
   const [showDespForm,  setShowDespForm]  = useState(false);
   const [despForm,      setDespForm]      = useState({ nome: "", valor: "", tipo: "fixa", mes: "" }); // { client, novoVenc }
 
@@ -696,7 +697,18 @@ export default function App() {
 
 
 
-  const saveDespesa = async () => {
+  // Renovar em confiança — +3 dias a partir de hoje, sem crédito
+  const openConfianca = (c) => {
+    setConfiancaModal({ client: c, novoVenc: addDias(todayISO(), 3) });
+  };
+
+  const executarConfianca = async () => {
+    if (!confiancaModal) return;
+    setSaving(true);
+    await updateDoc(doc(db, "clientes", confiancaModal.client.id), { vencimento: confiancaModal.novoVenc });
+    setSaving(false);
+    setConfiancaModal(null);
+  };
     if (!despForm.nome || !despForm.valor) return;
     setSaving(true);
     await addDoc(collection(db, "despesas"), {
@@ -1011,6 +1023,13 @@ export default function App() {
                       Renovar
                     </button>
 
+                    {/* Renovar em confiança — só quando expirado */}
+                    {st === "expirado" && (
+                      <button onClick={() => openConfianca(c)} style={{ ...S.btnSm, padding: "9px 12px", fontSize: 12, color: C.warning, borderColor: `${C.warning}50`, background: C.warningGlow }}>
+                        +3 dias
+                      </button>
+                    )}
+
                     {/* Enviar cobrança — sempre visível */}
                     <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, padding: "9px 14px", fontSize: 12, flex: 1 }}>
                       Enviar cobrança
@@ -1172,6 +1191,9 @@ export default function App() {
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         <button onClick={() => openPay(c)} style={{ ...S.btnPri, flex: 1, padding: "9px 14px", fontSize: 12 }}>Registrar pagamento</button>
                         <button onClick={() => confirmarRenovacao(c)} style={{ ...S.btnPri, flex: 1, padding: "9px 14px", fontSize: 12, background: `linear-gradient(135deg,${C.success},#059669)` }}>Renovar</button>
+                        {group.title === "Expirados" && (
+                          <button onClick={() => openConfianca(c)} style={{ ...S.btnSm, padding: "9px 12px", fontSize: 12, color: C.warning, borderColor: `${C.warning}50`, background: C.warningGlow }}>+3 dias</button>
+                        )}
                         <button onClick={() => enviarWhatsApp(c, null, "cobranca")} style={{ ...S.btnWarn, flex: 1, padding: "9px 14px", fontSize: 12 }}>Enviar cobrança</button>
                       </div>
                     </div>
@@ -1747,6 +1769,48 @@ export default function App() {
                 </button>
               )}
               <button onClick={() => setRenovacaoOk(null)} style={{ ...S.btnSec, width: "100%", padding: 14 }}>Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL RENOVAR EM CONFIANÇA ══ */}
+      {confiancaModal && (
+        <div style={S.overlay}>
+          <div style={{
+            ...S.card, width: "100%", maxWidth: 560, borderRadius: "20px 20px 0 0",
+            padding: "8px 0 0", animation: "slideUp 0.25s ease"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px 12px" }}>
+              <div style={{ width: 40, height: 4, background: C.border, borderRadius: 2 }} />
+              <button onClick={() => setConfiancaModal(null)} style={{ background: C.bgCard2, border: `1px solid ${C.border}`, borderRadius: "50%", width: 30, height: 30, color: C.textMuted, cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+            </div>
+            <div style={{ padding: "0 20px 36px" }}>
+              <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>Renovar em confiança</h3>
+              <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>{confiancaModal.client.nome}</div>
+
+              <div style={{ background: C.warningGlow, border: `1px solid ${C.warning}40`, borderRadius: 10, padding: "12px 14px", marginBottom: 18 }}>
+                <div style={{ fontSize: 12, color: C.warning, fontWeight: 600, marginBottom: 4 }}>⚠ Liberação temporária</div>
+                <div style={{ fontSize: 12, color: C.textMuted }}>+3 dias sem registro de crédito. Solicite o pagamento em seguida.</div>
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <Label>Nova data de vencimento</Label>
+                <input type="date" value={confiancaModal.novoVenc}
+                  onChange={e => setConfiancaModal(r => ({ ...r, novoVenc: e.target.value }))}
+                  style={S.input} />
+                <div style={{ fontSize: 11, color: C.textDim, marginTop: 6 }}>
+                  Calculado: hoje + 3 dias. Altere se necessário.
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => setConfiancaModal(null)} style={{ ...S.btnSec, flex: 1 }}>Cancelar</button>
+                <button onClick={executarConfianca} disabled={saving}
+                  style={{ flex: 1, background: `linear-gradient(135deg,${C.warning},#cc7a00)`, color: "#fff", border: "none", borderRadius: 10, padding: 14, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Roboto',sans-serif" }}>
+                  {saving ? "Salvando..." : "Confirmar +3 dias"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
