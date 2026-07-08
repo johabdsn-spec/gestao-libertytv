@@ -709,6 +709,8 @@ export default function App() {
     setSaving(false);
     setConfiancaModal(null);
   };
+
+  const saveDespesa = async () => {
     if (!despForm.nome || !despForm.valor) return;
     setSaving(true);
     await addDoc(collection(db, "despesas"), {
